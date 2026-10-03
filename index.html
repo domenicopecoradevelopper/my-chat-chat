@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Chat WebRTC Nativa</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; text-align: center; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .status-box { background: #e7f3ff; color: #0c5460; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
+        #video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-top: 20px; }
+        .video-container { position: relative; background: #222; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; }
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .video-label { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; z-index: 2; }
+        .video-controls { position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; z-index: 10; }
+        .ctrl-btn { background: rgba(0,0,0,0.6); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
+        .ctrl-btn:hover { background: rgba(0,0,0,0.9); }
+        .ctrl-btn.disabled { background: #dc3545; }
+        .chat-container { margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px; text-align: left; }
+        #chat-window { height: 160px; border: 1px solid #ddd; background: #fafafa; border-radius: 6px; padding: 10px; overflow-y: auto; margin-bottom: 10px; }
+        .chat-message { margin-bottom: 8px; font-size: 14px; }
+        .chat-message strong { color: #0056b3; }
+        .chat-input-box { display: flex; gap: 10px; }
+        #chat-message-input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        #btn-send-chat { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        #btn-send-chat:hover { background: #0069d9; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Stanza Multi-Chat WebRTC</h1>
+    <div class="status-box">Stato: <span id="status-text" style="color: #dc3545;">Disconnesso</span> | Il tuo ID: <span id="my-id">-</span></div>
+    
+    <div id="video-grid"></div>
+
+    <div class="chat-container">
+        <h3>Chat di Gruppo</h3>
+        <div id="chat-window"></div>
+        <div class="chat-input-box">
+            <input type="text" id="chat-message-input" placeholder="Scrivi un messaggio pubblico...">
+            <button id="btn-send-chat">Invia</button>
+        </div>
+    </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
