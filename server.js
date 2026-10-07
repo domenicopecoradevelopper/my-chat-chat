@@ -6,7 +6,7 @@ const path = require('path');
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
-    // Gestisce ed isola l'URL eliminando i parametri di query (?room=...) per la lettura dei file fisici
+    // Gestione ed isolamento pulito dell'URL ignorando i parametri per link rapidi (?room=...)
     const cleanUrl = req.url.split('?')[0];
     let filePath = cleanUrl === '/' ? './index.html' : `.${cleanUrl}`;
     const extname = path.extname(filePath);
@@ -40,6 +40,8 @@ wss.on('connection', (ws) => {
             clients.forEach((info, id) => {
                 if (id !== userId && info.room === data.room) {
                     peersInRoom.push({ id: id, username: info.username });
+                    
+                    // Notifica istantanea bidirezionale della stanza per agganciare il P2P WebRTC
                     if (info.ws.readyState === 1) {
                         info.ws.send(JSON.stringify({ type: 'user-joined', id: userId, username: clientData.username }));
                     }
