@@ -8,6 +8,7 @@ const activeRoomText = document.getElementById('active-room-text');
 const myNameText = document.getElementById('my-name-text');
 const btnLeave = document.getElementById('btn-leave');
 const videoGrid = document.getElementById('video-grid');
+const myIdDisplay = document.getElementById('my-id');
 
 const rtcConfig = { iceServers: [{ urls: 'stun:://google.com' }, { urls: 'stun:://google.com' }] };
 
@@ -33,7 +34,7 @@ btnGenerateRoom.addEventListener('click', () => {
 btnEnterRoom.addEventListener('click', () => {
     const roomCode = roomInput.value.trim().toLowerCase();
     const username = nameInput.value.trim();
-    const isAlphanumeric = /^[a-z0-9]+$/.test(roomCode);
+    const isAlphanumeric = /^[a-z0-9]+\$/.test(roomCode); // Corretta espressione regolare senza escape errati
     
     if (!username || roomCode.length < 8 || !isAlphanumeric) {
         roomError.style.display = "block";
@@ -47,7 +48,7 @@ btnEnterRoom.addEventListener('click', () => {
     activeRoomText.innerText = targetRoom;
     myNameText.innerText = myUsername;
     
-    // Aggiorna l'URL della barra degli indirizzi per la condivisione tramite copia-incolla
+    // Aggiorna l'URL della barra degli indirizzi per la condivisione rapida
     const newUrl = `${window.location.origin}${window.location.pathname}?room=${targetRoom}`;
     window.history.replaceState({}, '', newUrl);
     
@@ -82,16 +83,20 @@ function initWebSocket() {
 
         if (data.type === 'welcome') {
             myId = data.id;
+            myIdDisplay.innerText = myId;
             ws.send(JSON.stringify({ type: 'join-room', room: targetRoom, username: myUsername }));
             return;
         }
 
         switch (data.type) {
             case 'room-peers':
+                // Chiamiamo tutti i presenti
                 data.peers.forEach(peer => makeCall(peer.id, peer.username));
                 break;
             case 'user-joined':
+                // Se qualcuno si unisce dopo di noi, avviamo subito la chiamata verso di lui
                 console.log(`Utente connesso: ${data.username}`);
+                makeCall(data.id, data.username);
                 break;
             case 'offer':
                 await handleOffer(data.sender, data.username, data.offer);
@@ -113,7 +118,7 @@ function initWebSocket() {
     };
 }
 
-// Algoritmo Geometrico Matematico di Calcolo Spazio Finestre (Zoom-Style)
+// Algoritmo Geometrico di Adattamento Schermo fluido (Zoom-Style)
 function recalculateLayout() {
     const containers = videoGrid.querySelectorAll('.video-container');
     const count = containers.length;
@@ -164,7 +169,7 @@ async function createPeerConnection(peerId, remoteName) {
     };
 
     pc.ontrack = (event) => {
-        addVideoStream(remoteName, event.streams[0], false, peerId);
+        addVideoStream(remoteName, event.streams, false, peerId);
     };
 
     return pc;
@@ -252,15 +257,18 @@ function removeUser(peerId) {
     const el = document.getElementById(`v-${peerId}`);
     if (el) el.remove();
     
-    recalculateLayout();
+    recalculateLayout(); // Forza ricalcolo al distacco degli utenti
 }
 
 btnLeave.addEventListener('click', () => {
     if (ws) { ws.close(); ws = null; }
     for (let peerId in peerConnections) { removeUser(peerId); }
     
-    // Rimuove il parametro della stanza dall'URL quando si abbandona la stanza
-    window.history.replaceState({}, '', window.location.pathname);
+    // Resetta l'interfaccia utente locale
+    videoGrid.innerHTML = '';
+    myIdDisplay.innerText = '-';
+    activeRoomText.innerText = '-';
     
+    window.history.replaceState({}, '', window.location.pathname);
     roomOverlay.style.display = "flex";
 });
