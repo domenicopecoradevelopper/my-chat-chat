@@ -2,46 +2,129 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Chat WebRTC Nativa</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Multi-Chat WebRTC Intelligente</title>
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; text-align: center; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .status-box { background: #e7f3ff; color: #0c5460; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
-        #video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-top: 20px; }
-        .video-container { position: relative; background: #222; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; }
-        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        .video-label { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; z-index: 2; }
-        .video-controls { position: absolute; top: 10px; right: 10px; display: flex; gap: 5px; z-index: 10; }
-        .ctrl-btn { background: rgba(0,0,0,0.6); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
-        .ctrl-btn:hover { background: rgba(0,0,0,0.9); }
-        .ctrl-btn.disabled { background: #dc3545; }
-        .chat-container { margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px; text-align: left; }
-        #chat-window { height: 160px; border: 1px solid #ddd; background: #fafafa; border-radius: 6px; padding: 10px; overflow-y: auto; margin-bottom: 10px; }
-        .chat-message { margin-bottom: 8px; font-size: 14px; }
-        .chat-message strong { color: #0056b3; }
-        .chat-input-box { display: flex; gap: 10px; }
-        #chat-message-input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        #btn-send-chat { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        #btn-send-chat:hover { background: #0069d9; }
+        * { box-sizing: border-box; }
+        html, body { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #111214; color: #fff; overflow: hidden;
+        }
+        
+        /* Contenitore Principale ad altezza dinamica */
+        .app-wrapper {
+            display: flex; flex-direction: column; width: 100%; height: 100%; padding: 10px;
+        }
+
+        /* Barra di Stato superiore compatta */
+        .top-bar {
+            background: #1e1f22; padding: 10px 15px; border-radius: 8px;
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 14px; margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            flex-shrink: 0;
+        }
+        .room-info strong { color: #5865f2; }
+        
+        #btn-leave { 
+            background: #da373c; color: white; padding: 6px 14px; border: none; 
+            border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px;
+        }
+        #btn-leave:hover { background: #a92b2f; }
+
+        /* Griglia Video Adattiva ad Area Massima */
+        #video-grid {
+            flex-grow: 1; width: 100%; display: flex; flex-wrap: wrap;
+            justify-content: center; align-content: center; align-items: center;
+            gap: 10px; overflow: hidden; position: relative;
+        }
+
+        /* Box contenitore del singolo video */
+        .video-container {
+            position: relative; background: #2b2d31; border-radius: 8px;
+            overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s ease-in-out;
+        }
+
+        video { 
+            width: 100%; height: 100%; object-fit: cover; 
+            background: #1e1f22;
+        }
+        .local-video { transform: scaleX(-1); } /* Effetto specchio solo per se stessi */
+
+        .video-label {
+            position: absolute; bottom: 10px; left: 10px; 
+            background: rgba(0, 0, 0, 0.65); color: white; 
+            padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500;
+            backdrop-filter: blur(4px); z-index: 2;
+        }
+        
+        .video-controls {
+            position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 10;
+        }
+        .ctrl-btn {
+            background: rgba(0, 0, 0, 0.6); color: white; border: none; 
+            padding: 6px 10px; border-radius: 5px; cursor: pointer; 
+            font-size: 11px; font-weight: bold; backdrop-filter: blur(4px);
+        }
+        .ctrl-btn:hover { background: rgba(255,255,255,0.2); }
+        .ctrl-btn.disabled { background: #f23f43; color: white; }
+
+        /* Schermata di blocco iniziale (Login flessibile) */
+        #room-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: #1e1f22; z-index: 999; display: flex; align-items: center; justify-content: center; 
+            padding: 20px;
+        }
+        .login-box { 
+            background: #313338; padding: 30px; border-radius: 12px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-width: 400px; width: 100%; 
+        }
+        .login-box h2 { margin-top: 0; color: #fff; font-size: 24px; }
+        .login-box p { color: #b5bac1; font-size: 14px; margin-bottom: 20px; }
+        .login-box input { 
+            width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #1e1f22; 
+            background: #1e1f22; color: white; border-radius: 6px; font-size: 16px; 
+            box-sizing: border-box; text-align: center;
+        }
+        .login-box input:focus { outline: 2px solid #5865f2; }
+        .login-box button { 
+            width: 100%; padding: 12px; background: #5865f2; color: white; 
+            border: none; border-radius: 6px; font-size: 16px; font-weight: bold; 
+            cursor: pointer; margin-bottom: 10px; transition: background 0.2s;
+        }
+        .login-box button:hover { background: #4752c4; }
+        .login-box .secondary-btn { background: #4e5058; }
+        .login-box .secondary-btn:hover { background: #6d6f78; }
+        .error-hint { color: #f23f43; font-size: 13px; margin-top: -10px; margin-bottom: 15px; display: none; text-align: center; }
     </style>
 </head>
 <body>
-<div class="container">
-    <h1>Stanza Multi-Chat WebRTC</h1>
-    <div class="status-box">Stato: <span id="status-text" style="color: #dc3545;">Disconnesso</span> | Il tuo ID: <span id="my-id">-</span></div>
-    
-    <div id="video-grid"></div>
 
-    <div class="chat-container">
-        <h3>Chat di Gruppo</h3>
-        <div id="chat-window"></div>
-        <div class="chat-input-box">
-            <input type="text" id="chat-message-input" placeholder="Scrivi un messaggio pubblico...">
-            <button id="btn-send-chat">Invia</button>
-        </div>
+<div id="room-overlay">
+    <div class="login-box">
+        <h2>Entra in Chiamata</h2>
+        <p>Scegli il tuo nome e inserisci un codice stanza (almeno 8 caratteri alfanumerici) per connetterti.</p>
+        <input type="text" id="name-input" placeholder="Il tuo nome (es. Marco)" maxlength="15">
+        <input type="text" id="room-input" placeholder="Codice Stanza (es. stanza99x)" maxlength="20">
+        <div id="room-error" class="error-hint">Nome richiesto e codice stanza di almeno 8 caratteri alfanumerici!</div>
+        <button id="btn-enter-room">Accedi alla Videochat</button>
+        <button id="btn-generate-room" class="secondary-btn">Genera Stanza Casuale</button>
     </div>
 </div>
+
+<div class="app-wrapper">
+    <div class="top-bar">
+        <div class="room-info">
+            Stanza: <span id="active-room-text" style="color: #5865f2;">-</span> | 
+            Utente: <span id="my-name-text" style="color: #23a55a;">-</span>
+        </div>
+        <button id="btn-leave">Abbandona</button>
+    </div>
+    <div id="video-grid"></div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>
