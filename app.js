@@ -33,7 +33,7 @@ btnGenerateRoom.addEventListener('click', () => {
 btnEnterRoom.addEventListener('click', () => {
     const roomCode = roomInput.value.trim().toLowerCase();
     const username = nameInput.value.trim();
-    const isAlphanumeric = /^[a-z0-9]+\$/.test(roomCode);
+    const isAlphanumeric = /^[a-z0-9]+$/.test(roomCode);
     
     if (!username || roomCode.length < 8 || !isAlphanumeric) {
         roomError.style.display = "block";
