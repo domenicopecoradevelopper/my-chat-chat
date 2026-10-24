@@ -10,20 +10,27 @@ const btnLeave = document.getElementById('btn-leave');
 const videoGrid = document.getElementById('video-grid');
 const myIdDisplay = document.getElementById('my-id');
 
-const rtcConfig = { iceServers: [{ urls: 'stun:://google.com' }, { urls: 'stun:://google.com' }] };
+const rtcConfig = { 
+    iceServers: [
+        { urls: 'stun:://google.com' },
+        { urls: 'stun:://google.com' },
+        { urls: 'stun:openrelay.metered.ca:80' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', password: 'openrelayproject' }
+    ] 
+};
 
 let localStream = null;
 let myId = null;
 let ws = null;
 let targetRoom = "";
 let myUsername = "";
+
 const peerConnections = {};
+const iceCandidatesQueue = {};
 
 const urlParams = new URLSearchParams(window.location.search);
 const roomFromUrl = urlParams.get('room');
-if (roomFromUrl) {
-    roomInput.value = roomFromUrl;
-}
+if (roomFromUrl) roomInput.value = roomFromUrl;
 
 btnGenerateRoom.addEventListener('click', () => {
     roomInput.value = Math.random().toString(36).substring(2, 11);
@@ -31,76 +38,68 @@ btnGenerateRoom.addEventListener('click', () => {
 });
 
 btnEnterRoom.addEventListener('click', () => {
-    const roomCode = roomInput.value.trim().toLowerCase().replace(/\s+/g, '');
+    const roomCode = roomInput.value.trim().toLowerCase();
     const username = nameInput.value.trim();
-    
-    if (!username || roomCode.length < 8) {
+    if (!username || roomCode.length < 8 || !/^[a-z0-9]+$/.test(roomCode)) {
         roomError.style.display = "block";
         return;
     }
-    
     roomError.style.display = "none";
     targetRoom = roomCode;
     myUsername = username;
-    
     activeRoomText.innerText = targetRoom;
     myNameText.innerText = myUsername;
-    
-    const newUrl = `${window.location.origin}${window.location.pathname}?room=${targetRoom}`;
-    window.history.replaceState({}, '', newUrl);
-    
+    window.history.replaceState({}, '', `${window.location.origin}${window.location.pathname}?room=${targetRoom}`);
     roomOverlay.style.display = "none";
     avviaApplicazione();
 });
 
 function avviaApplicazione() {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then(stream => {
-            localStream = stream;
-            addVideoStream(`${myUsername} (Tu)`, stream, true);
-            initWebSocket();
-        })
-        .catch(err => {
-            console.error(err);
-            alert('Errore hardware: autorizza la webcam per entrare.');
-            roomOverlay.style.display = "flex";
-        });
+    if (localStream) {
+        addVideoStream(`${myUsername} (Tu)`, localStream, true);
+        initWebSocket();
+    } else {
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(stream => {
+                localStream = stream;
+                addVideoStream(`${myUsername} (Tu)`, stream, true);
+                initWebSocket();
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Attiva fotocamera e microfono.');
+                roomOverlay.style.display = "flex";
+            });
+    }
 }
 
 function initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
     ws = new WebSocket(`${protocol}${window.location.host}`);
-
     ws.onmessage = async (message) => {
         const data = JSON.parse(message.data);
-
         if (data.type === 'welcome') {
             myId = data.id;
             myIdDisplay.innerText = myId;
             ws.send(JSON.stringify({ type: 'join-room', room: targetRoom, username: myUsername }));
             return;
         }
-
         switch (data.type) {
             case 'room-peers':
-                console.log("Peer già in stanza:", data.peers);
+                data.peers.forEach(p => createPeerConnection(p.id, p.username, true));
                 break;
             case 'user-joined':
-                console.log(`Nuovo utente connesso. Chiamo: ${data.username}`);
-                makeCall(data.id, data.username);
+                createPeerConnection(data.id, data.username, false);
                 break;
             case 'offer':
                 await handleOffer(data.sender, data.username, data.offer);
                 break;
             case 'answer':
-                if (peerConnections[data.sender]) {
-                    await peerConnections[data.sender].setRemoteDescription(new RTCSessionDescription(data.answer));
-                }
+                if (peerConnections[data.sender]) await peerConnections[data.sender].setRemoteDescription(new RTCSessionDescription(data.answer));
+                processQueue(data.sender);
                 break;
             case 'candidate':
-                if (peerConnections[data.sender]) {
-                    await peerConnections[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate)).catch(e => {});
-                }
+                await handleCandidate(data.sender, data.candidate);
                 break;
             case 'user-left':
                 removeUser(data.id);
@@ -109,144 +108,110 @@ function initWebSocket() {
     };
 }
 
+async function createPeerConnection(peerId, remoteName, isInitiator) {
+    if (peerConnections[peerId]) return peerConnections[peerId];
+    const pc = new RTCPeerConnection(rtcConfig);
+    peerConnections[peerId] = pc;
+    iceCandidatesQueue[peerId] = [];
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    pc.onicecandidate = (e) => {
+        if (e.candidate && ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'candidate', target: peerId, candidate: e.candidate }));
+        }
+    };
+    pc.ontrack = (e) => {
+        if (e.streams && e.streams[0]) addVideoStream(remoteName, e.streams[0], false, peerId);
+    };
+    pc.onnegotiationneeded = async () => {
+        if (isInitiator) {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            ws.send(JSON.stringify({ type: 'offer', target: peerId, offer: offer, username: myUsername }));
+        }
+    };
+    return pc;
+}
+
+async function handleOffer(peerId, remoteName, offer) {
+    const pc = await createPeerConnection(peerId, remoteName, false);
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    ws.send(JSON.stringify({ type: 'answer', target: peerId, answer: answer }));
+    processQueue(peerId);
+}
+
+async function handleCandidate(peerId, candidate) {
+    const pc = peerConnections[peerId];
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { console.error(e); }
+    } else {
+        if (!iceCandidatesQueue[peerId]) iceCandidatesQueue[peerId] = [];
+        iceCandidatesQueue[peerId].push(candidate);
+    }
+}
+
+function processQueue(peerId) {
+    const pc = peerConnections[peerId];
+    const queue = iceCandidatesQueue[peerId];
+    if (pc && pc.remoteDescription && pc.remoteDescription.type && queue) {
+        while (queue.length > 0) {
+            pc.addIceCandidate(new RTCIceCandidate(queue.shift())).catch(e => console.error(e));
+        }
+    }
+}
+
 function recalculateLayout() {
     const containers = videoGrid.querySelectorAll('.video-container');
     const count = containers.length;
     if (!count) return;
-
     const width = videoGrid.clientWidth;
     const height = videoGrid.clientHeight;
-    
-    let bestWidth = 0; let bestHeight = 0; let targetAspectRatio = 4 / 3;
-
+    let bestWidth = 0, bestHeight = 0, targetAspectRatio = 4 / 3;
     for (let cols = 1; cols <= count; cols++) {
         const rows = Math.ceil(count / cols);
         let maxW = Math.floor(width / cols) - 10;
         let maxH = Math.floor(height / rows) - 10;
-
-        if (maxW * (1 / targetAspectRatio) <= maxH) { maxH = Math.floor(maxW * (1 / targetAspectRatio)); } 
-        else { maxW = Math.floor(maxH * targetAspectRatio); }
-
+        if (maxW * (1 / targetAspectRatio) <= maxH) maxH = Math.floor(maxW * (1 / targetAspectRatio));
+        else maxW = Math.floor(maxH * targetAspectRatio);
         if (maxW > bestWidth) { bestWidth = maxW; bestHeight = maxH; }
     }
-
-    containers.forEach(container => {
-        container.style.width = `${bestWidth}px`;
-        container.style.height = `${bestHeight}px`;
-    });
+    containers.forEach(c => { c.style.width = `${bestWidth}px`; c.style.height = `${bestHeight}px`; });
 }
 
 window.addEventListener('resize', recalculateLayout);
 
-async function createPeerConnection(peerId, remoteName) {
-    const pc = new RTCPeerConnection(rtcConfig);
-    peerConnections[peerId] = pc;
-
-    if (localStream) {
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    }
-
-    pc.onicecandidate = (event) => {
-        if (event.candidate && ws?.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'candidate', target: peerId, candidate: event.candidate }));
-        }
-    };
-
-    pc.ontrack = (event) => {
-        // Corretto aggancio cross-browser prendendo lo stream nativo aggregato
-        if (event.streams && event.streams[0]) {
-            addVideoStream(remoteName, event.streams[0], false, peerId);
-        }
-    };
-
-    return pc;
-}
-
-async function makeCall(peerId, remoteName) {
-    const pc = await createPeerConnection(peerId, remoteName);
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'offer', target: peerId, offer: offer, username: myUsername }));
-    }
-}
-
-async function handleOffer(peerId, remoteName, offer) {
-    const pc = await createPeerConnection(peerId, remoteName);
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'answer', target: peerId, answer: answer }));
-    }
-}
-
-// SBLOCCO CRITICO AUTOPLAY: Forza la riproduzione asincrona superando i blocchi di Firefox/Chrome
 function addVideoStream(label, stream, isLocal, peerId = null) {
     const streamId = peerId ? `v-${peerId}` : 'v-local';
     if (document.getElementById(streamId)) return;
-
     const container = document.createElement('div');
     container.className = 'video-container';
     container.id = streamId;
-
     const video = document.createElement('video');
-    
-    // Configurazione nativa preventiva obbligatoria del DOM
-    video.playsInline = true;
-    video.autoplay = true;
-    
-    if (isLocal) { 
-        video.muted = true; 
-        video.classList.add('local-video'); 
-    }
-
     video.srcObject = stream;
-
-    // Forza l'avvio della riproduzione catturando l'errore se il browser tenta il blocco autoplay
-    video.addEventListener('loadedmetadata', () => {
-        video.play().catch(error => {
-            console.log("Riproduzione intercettata dal browser, tentativo di sblocco forzato:", error);
-            // Fallback: se il browser blocca l'audio remoto, lo mutiamo temporaneamente per far partire lo schermo
-            if (!isLocal) {
-                video.muted = true;
-                video.play();
-            }
-        });
-    });
-
+    video.autoplay = true;
+    video.playsInline = true;
+    if (isLocal) { video.muted = true; video.classList.add('local-video'); }
     const divLabel = document.createElement('div');
     divLabel.className = 'video-label';
     divLabel.innerText = label;
-
     const controls = document.createElement('div');
     controls.className = 'video-controls';
-
     if (isLocal) {
         const btnAudio = document.createElement('button');
         btnAudio.className = 'ctrl-btn';
         btnAudio.innerText = 'Muto';
         btnAudio.onclick = () => {
-            localStream.getAudioTracks().forEach(track => {
-                track.enabled = !track.enabled;
-                btnAudio.innerText = track.enabled ? 'Muto' : 'Sblocca';
-                btnAudio.classList.toggle('disabled', !track.enabled);
-            });
+            localStream.getAudioTracks().forEach(t => { t.enabled = !t.enabled; btnAudio.innerText = t.enabled ? 'Muto' : 'Sblocca'; btnAudio.classList.toggle('disabled', !t.enabled); });
         };
-
         const btnVideo = document.createElement('button');
         btnVideo.className = 'ctrl-btn';
         btnVideo.innerText = 'Stop Cam';
         btnVideo.onclick = () => {
-            localStream.getVideoTracks().forEach(track => {
-                track.enabled = !track.enabled;
-                btnVideo.innerText = track.enabled ? 'Stop Cam' : 'Avvia Cam';
-                btnVideo.classList.toggle('disabled', !track.enabled);
-            });
+            localStream.getVideoTracks().forEach(t => { t.enabled = !t.enabled; btnVideo.innerText = t.enabled ? 'Stop Cam' : 'Avvia Cam'; btnVideo.classList.toggle('disabled', !t.enabled); });
         };
         controls.append(btnAudio, btnVideo);
     }
-
     container.append(video, divLabel, controls);
     videoGrid.append(container);
     recalculateLayout();
@@ -254,6 +219,7 @@ function addVideoStream(label, stream, isLocal, peerId = null) {
 
 function removeUser(peerId) {
     if (peerConnections[peerId]) { peerConnections[peerId].close(); delete peerConnections[peerId]; }
+    if (iceCandidatesQueue[peerId]) delete iceCandidatesQueue[peerId];
     const el = document.getElementById(`v-${peerId}`);
     if (el) el.remove();
     recalculateLayout();
@@ -261,11 +227,10 @@ function removeUser(peerId) {
 
 btnLeave.addEventListener('click', () => {
     if (ws) { ws.close(); ws = null; }
-    for (let peerId in peerConnections) { removeUser(peerId); }
-    if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
+    for (let pId in peerConnections) removeUser(pId);
     videoGrid.innerHTML = '';
-    myIdDisplay.innerText = '-'; activeRoomText.innerText = '-';
-    nameInput.value = ''; roomInput.value = '';
+    myIdDisplay.innerText = '-';
+    activeRoomText.innerText = '-';
     window.history.replaceState({}, '', window.location.pathname);
     roomOverlay.style.display = "flex";
 });
