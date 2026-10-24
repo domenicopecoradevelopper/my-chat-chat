@@ -10,12 +10,7 @@ const btnLeave = document.getElementById('btn-leave');
 const videoGrid = document.getElementById('video-grid');
 const myIdDisplay = document.getElementById('my-id');
 
-const rtcConfig = { 
-    iceServers: [
-        { urls: 'stun:://google.com' },
-        { urls: 'stun:://google.com' }
-    ]
-};
+const rtcConfig = { iceServers: [{ urls: 'stun:://google.com' }, { urls: 'stun:://google.com' }] };
 
 let localStream = null;
 let myId = null;
@@ -67,7 +62,7 @@ function avviaApplicazione() {
         })
         .catch(err => {
             console.error(err);
-            alert('Errore hardware: autorizza webcam e microfono per partecipare.');
+            alert('Errore hardware: autorizza la webcam per entrare.');
             roomOverlay.style.display = "flex";
         });
 }
@@ -88,33 +83,25 @@ function initWebSocket() {
 
         switch (data.type) {
             case 'room-peers':
-                // Gli utenti già presenti non fanno nulla, aspettano che chi entra invii la chiamata
-                console.log("Utenti registrati in questa stanza:", data.peers);
+                console.log("Peer già in stanza:", data.peers);
                 break;
-                
             case 'user-joined':
-                // SBLOCCO: Chi è già dentro riceve la notifica e fa partire la chiamata verso il nuovo
-                console.log(`Nuovo partecipante entrato nella stanza. Avvio chiamata verso: ${data.username}`);
+                console.log(`Nuovo utente connesso. Chiamo: ${data.username}`);
                 makeCall(data.id, data.username);
                 break;
-                
             case 'offer':
                 await handleOffer(data.sender, data.username, data.offer);
                 break;
-                
             case 'answer':
                 if (peerConnections[data.sender]) {
                     await peerConnections[data.sender].setRemoteDescription(new RTCSessionDescription(data.answer));
                 }
                 break;
-                
             case 'candidate':
                 if (peerConnections[data.sender]) {
-                    await peerConnections[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate))
-                        .catch(e => console.error("Errore ICE:", e));
+                    await peerConnections[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate)).catch(e => {});
                 }
                 break;
-                
             case 'user-left':
                 removeUser(data.id);
                 break;
@@ -130,25 +117,17 @@ function recalculateLayout() {
     const width = videoGrid.clientWidth;
     const height = videoGrid.clientHeight;
     
-    let bestWidth = 0;
-    let bestHeight = 0;
-    let targetAspectRatio = 4 / 3;
+    let bestWidth = 0; let bestHeight = 0; let targetAspectRatio = 4 / 3;
 
     for (let cols = 1; cols <= count; cols++) {
         const rows = Math.ceil(count / cols);
         let maxW = Math.floor(width / cols) - 10;
         let maxH = Math.floor(height / rows) - 10;
 
-        if (maxW * (1 / targetAspectRatio) <= maxH) {
-            maxH = Math.floor(maxW * (1 / targetAspectRatio));
-        } else {
-            maxW = Math.floor(maxH * targetAspectRatio);
-        }
+        if (maxW * (1 / targetAspectRatio) <= maxH) { maxH = Math.floor(maxW * (1 / targetAspectRatio)); } 
+        else { maxW = Math.floor(maxH * targetAspectRatio); }
 
-        if (maxW > bestWidth) {
-            bestWidth = maxW;
-            bestHeight = maxH;
-        }
+        if (maxW > bestWidth) { bestWidth = maxW; bestHeight = maxH; }
     }
 
     containers.forEach(container => {
@@ -163,7 +142,6 @@ async function createPeerConnection(peerId, remoteName) {
     const pc = new RTCPeerConnection(rtcConfig);
     peerConnections[peerId] = pc;
 
-    // Aggiunge le tracce locali PRIMA dello scambio dei segnali SDP
     if (localStream) {
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
@@ -174,7 +152,6 @@ async function createPeerConnection(peerId, remoteName) {
         }
     };
 
-    // CORREZIONE STRUTTURALE: Estrae il flusso corretto dall'array streams per la visualizzazione cross-browser
     pc.ontrack = (event) => {
         if (event.streams && event.streams[0]) {
             addVideoStream(remoteName, event.streams[0], false, peerId);
@@ -215,10 +192,7 @@ function addVideoStream(label, stream, isLocal, peerId = null) {
     video.srcObject = stream;
     video.autoplay = true;
     video.playsInline = true;
-    if (isLocal) {
-        video.muted = true;
-        video.classList.add('local-video');
-    }
+    if (isLocal) { video.muted = true; video.classList.add('local-video'); }
 
     const divLabel = document.createElement('div');
     divLabel.className = 'video-label';
@@ -254,15 +228,11 @@ function addVideoStream(label, stream, isLocal, peerId = null) {
 
     container.append(video, divLabel, controls);
     videoGrid.append(container);
-    
     recalculateLayout();
 }
 
 function removeUser(peerId) {
-    if (peerConnections[peerId]) {
-        peerConnections[peerId].close();
-        delete peerConnections[peerId];
-    }
+    if (peerConnections[peerId]) { peerConnections[peerId].close(); delete peerConnections[peerId]; }
     const el = document.getElementById(`v-${peerId}`);
     if (el) el.remove();
     recalculateLayout();
@@ -271,18 +241,10 @@ function removeUser(peerId) {
 btnLeave.addEventListener('click', () => {
     if (ws) { ws.close(); ws = null; }
     for (let peerId in peerConnections) { removeUser(peerId); }
-    
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-    
+    if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
     videoGrid.innerHTML = '';
-    myIdDisplay.innerText = '-';
-    activeRoomText.innerText = '-';
-    nameInput.value = '';
-    roomInput.value = '';
-    
+    myIdDisplay.innerText = '-'; activeRoomText.innerText = '-';
+    nameInput.value = ''; roomInput.value = '';
     window.history.replaceState({}, '', window.location.pathname);
     roomOverlay.style.display = "flex";
 });
