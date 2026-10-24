@@ -1,74 +1,93 @@
-const express = require('express');
-const http = require('http');
 const { WebSocketServer } = require('ws');
+const http = require('http');
+const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
 
-const app = express();
-app.use(express.static(__dirname));
+const server = http.createServer((req, res) => {
+    const cleanUrl = req.url.split('?')[0];
+    let filePath = cleanUrl === '/' ? './index.html' : `.${cleanUrl}`;
+    const extname = path.extname(filePath);
+    let contentType = 'text/html';
+    if (extname === '.js') contentType = 'text/javascript';
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    fs.readFile(filePath, (error, content) => {
+        if (error) { 
+            res.writeHead(404); 
+            res.end('File non trovato'); 
+        } else { 
+            res.writeHead(200, { 'Content-Type': contentType }); 
+            res.end(content, 'utf-8'); 
+        }
+    });
 });
 
-const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
-const clients = new Map();
+const rooms = new Map(); // roomName -> Map(userId -> { ws, username })
 
 wss.on('connection', (ws) => {
-    const userId = Math.random().toString(36).substring(2, 9);
-    clients.set(userId, { ws, room: null, username: null });
-    
-    ws.send(JSON.stringify({ type: 'welcome', id: userId }));
+    let currentRoom = null;
+    let myUserId = Math.random().toString(36).substring(2, 9);
 
     ws.on('message', (message) => {
-        try {
-            const data = JSON.parse(message);
-            const clientData = clients.get(userId);
+        const data = JSON.parse(message);
 
-            if (data.type === 'join-room') {
-                clientData.room = data.room;
-                clientData.username = data.username;
-                
-                console.log(`[STANZA: ${data.room}] Nuovo client registrato: ${data.username}`);
-                
-                const peersInRoom = [];
-                clients.forEach((info, id) => {
-                    if (id !== userId && info.room === data.room) {
-                        peersInRoom.push({ id: id, username: info.username });
-                        
-                        if (info.ws.readyState === 1) {
-                            info.ws.send(JSON.stringify({ type: 'user-joined', id: userId, username: clientData.username }));
-                        }
-                    }
-                });
-                
-                ws.send(JSON.stringify({ type: 'room-peers', peers: peersInRoom }));
-                return;
+        if (data.type === 'join-room') {
+            currentRoom = data.room;
+            if (!rooms.has(currentRoom)) {
+                rooms.set(currentRoom, new Map());
             }
+            
+            const roomClients = rooms.get(currentRoom);
+            
+            // Invia al nuovo arrivato la lista di chi è GIÀ presente nella stanza
+            const peersInRoom = [];
+            roomClients.forEach((info, id) => {
+                peersInRoom.push({ id: id, username: info.username });
+            });
+            ws.send(JSON.stringify({ type: 'room-peers', peers: peersInRoom, myId: myUserId }));
 
-            if (data.target && clients.has(data.target)) {
-                data.sender = userId;
-                const targetClient = clients.get(data.target);
-                if (targetClient && targetClient.ws.readyState === 1) {
-                    targetClient.ws.send(JSON.stringify(data));
+            // Salva il nuovo utente nella stanza
+            roomClients.set(myUserId, { ws, username: data.username });
+
+            // Avvisa TUTTI gli altri utenti già presenti che è entrato qualcuno
+            roomClients.forEach((info, id) => {
+                if (id !== myUserId && info.ws.readyState === 1) {
+                    info.ws.send(JSON.stringify({ type: 'user-joined', id: myUserId, username: data.username }));
+                }
+            });
+            return;
+        }
+
+        // Smistamento dei messaggi di rete WebRTC (Offer, Answer, Candidates)
+        if (currentRoom && rooms.has(currentRoom)) {
+            const roomClients = rooms.get(currentRoom);
+            if (data.target && roomClients.has(data.target)) {
+                data.sender = myUserId;
+                const targetWs = roomClients.get(data.target).ws;
+                if (targetWs.readyState === 1) {
+                    targetWs.send(JSON.stringify(data));
                 }
             }
-        } catch (e) {
-            console.error("Errore pacchetto:", e);
         }
     });
 
     ws.on('close', () => {
-        const clientData = clients.get(userId);
-        clients.delete(userId);
-        if (clientData && clientData.room) {
-            clients.forEach((info) => {
-                if (info.room === clientData.room && info.ws.readyState === 1) {
-                    info.ws.send(JSON.stringify({ type: 'user-left', id: userId }));
+        if (currentRoom && rooms.has(currentRoom)) {
+            const roomClients = rooms.get(currentRoom);
+            roomClients.delete(myUserId);
+            
+            // Avvisa i rimasti che l'utente è uscito
+            roomClients.forEach((info) => {
+                if (info.ws.readyState === 1) {
+                    info.ws.send(JSON.stringify({ type: 'user-left', id: myUserId }));
                 }
             });
+
+            if (roomClients.size === 0) {
+                rooms.delete(currentRoom);
+            }
         }
     });
 });
