@@ -35,7 +35,6 @@ let targetRoom = "";
 let myUsername = "";
 const peerConnections = {};
 
-// Controllo automatico dell'URL all'apertura
 const urlParams = new URLSearchParams(window.location.search);
 const roomFromUrl = urlParams.get('room');
 if (roomFromUrl) {
@@ -79,7 +78,7 @@ function avviaApplicazione() {
         })
         .catch(err => {
             console.error(err);
-            alert('Errore hardware: attiva webcam e microfono per accedere.');
+            alert('Errore hardware: attiva fotocamera e microfono per partecipare.');
             roomOverlay.style.display = "flex";
         });
 }
@@ -100,12 +99,10 @@ function initWebSocket() {
 
         switch (data.type) {
             case 'room-peers':
-                // Avvia la chiamata verso tutti gli utenti già presenti
-                data.peers.forEach(peer => makeCall(peer.id, peer.username));
-                break;
-            case 'user-joined':
-                // Resta in ascolto: chi entra avvia la connessione verso i vecchi peer
-                console.log(`Rilevato nuovo utente: ${data.username}`);
+                // Se entriamo dopo, lanciamo la chiamata verso tutti i presenti con un piccolo delay protettivo
+                setTimeout(() => {
+                    data.peers.forEach(peer => makeCall(peer.id, peer.username));
+                }, 800);
                 break;
             case 'offer':
                 await handleOffer(data.sender, data.username, data.offer);
