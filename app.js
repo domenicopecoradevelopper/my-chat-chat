@@ -10,7 +10,6 @@ const btnLeave = document.getElementById('btn-leave');
 const videoGrid = document.getElementById('video-grid');
 const myIdDisplay = document.getElementById('my-id');
 
-// Configurazione di rete potenziata: Server STUN di Google + Server TURN/STUN di OpenRelay per scavalcare qualsiasi Firewall/NAT
 const rtcConfig = { 
     iceServers: [
         { urls: 'stun:://google.com' },
@@ -36,7 +35,7 @@ let targetRoom = "";
 let myUsername = "";
 const peerConnections = {};
 
-// Controllo URL per link diretto (es: ?room=codiceStanza)
+// Controllo URL per link diretto
 const urlParams = new URLSearchParams(window.location.search);
 const roomFromUrl = urlParams.get('room');
 if (roomFromUrl) {
@@ -49,11 +48,9 @@ btnGenerateRoom.addEventListener('click', () => {
 });
 
 btnEnterRoom.addEventListener('click', () => {
-    // Trasforma in minuscolo e rimuove spazi prima, dopo e in mezzo al testo
     const roomCode = roomInput.value.trim().toLowerCase().replace(/\s+/g, '');
     const username = nameInput.value.trim();
     
-    // Controllo semplificato e robusto: nome non vuoto e stanza lunga almeno 8 caratteri
     if (!username || roomCode.length < 8) {
         roomError.style.display = "block";
         return;
@@ -74,21 +71,18 @@ btnEnterRoom.addEventListener('click', () => {
 });
 
 function avviaApplicazione() {
-    if (localStream) {
-        initWebSocket();
-    } else {
-        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-            .then(stream => {
-                localStream = stream;
-                addVideoStream(`${myUsername} (Tu)`, stream, true);
-                initWebSocket();
-            })
-            .catch(err => {
-                console.error(err);
-                alert('Attiva fotocamera e microfono per partecipare.');
-                roomOverlay.style.display = "flex";
-            });
-    }
+    // Forziamo sempre una richiesta hardware pulita ad ogni accesso alla stanza
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(stream => {
+            localStream = stream;
+            addVideoStream(`${myUsername} (Tu)`, stream, true);
+            initWebSocket();
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Impossibile accedere a fotocamera e microfono. Controlla i permessi del browser.');
+            roomOverlay.style.display = "flex";
+        });
 }
 
 function initWebSocket() {
@@ -174,7 +168,9 @@ async function createPeerConnection(peerId, remoteName) {
     const pc = new RTCPeerConnection(rtcConfig);
     peerConnections[peerId] = pc;
 
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
 
     pc.onicecandidate = (event) => {
         if (event.candidate && ws?.readyState === WebSocket.OPEN) {
@@ -274,11 +270,30 @@ function removeUser(peerId) {
 }
 
 btnLeave.addEventListener('click', () => {
+    // 1. Chiudiamo il canale di segnalazione
     if (ws) { ws.close(); ws = null; }
+    
+    // 2. Chiudiamo tutte le connessioni P2P
     for (let peerId in peerConnections) { removeUser(peerId); }
+    
+    // 3. Spegniamo fisicamente la telecamera e il microfono per liberare l'hardware
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+    
+    // 4. Svuotiamo l'interfaccia grafica
     videoGrid.innerHTML = '';
     myIdDisplay.innerText = '-';
     activeRoomText.innerText = '-';
+    
+    // 5. CANCELLIAMO i valori inseriti dall'utente nei moduli di login
+    nameInput.value = '';
+    roomInput.value = '';
+    
+    // 6. Resettiamo l'URL rimuovendo la stanza
     window.history.replaceState({}, '', window.location.pathname);
+    
+    // 7. Torniamo alla schermata iniziale
     roomOverlay.style.display = "flex";
 });
