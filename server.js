@@ -49,7 +49,7 @@ wss.on('connection', (ws) => {
                 if (id !== userId && info.room === data.room) {
                     peersInRoom.push({ id: id, username: info.username });
                     
-                    // Notifica immediatamente chi è già presente nella stanza
+                    // Notifica istantanea a chi è già presente
                     if (info.ws.readyState === 1) {
                         info.ws.send(JSON.stringify({ type: 'user-joined', id: userId, username: clientData.username }));
                     }
