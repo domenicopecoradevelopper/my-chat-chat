@@ -1,12 +1,13 @@
 {
   "name": "webrtc-multichat",
   "version": "1.0.0",
-  "description": "Multi-chat video P2P",
+  "description": "Multi-chat video P2P blindata",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "express": "^4.21.1",
     "ws": "^8.18.0"
   }
 }
