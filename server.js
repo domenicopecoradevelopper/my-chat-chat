@@ -6,7 +6,6 @@ const path = require('path');
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
-    // Estrae in modo sicuro solo il percorso del file, eliminando la query ?room=...
     const urlPath = req.url.split('?')[0];
     let filePath = urlPath === '/' ? './index.html' : `.${urlPath}`;
     
@@ -32,6 +31,7 @@ wss.on('connection', (ws) => {
     const userId = Math.random().toString(36).substring(2, 9);
     clients.set(userId, { ws, room: null, username: null });
     
+    // Invia il messaggio di benvenuto iniziale
     ws.send(JSON.stringify({ type: 'welcome', id: userId }));
 
     ws.on('message', (message) => {
@@ -42,30 +42,21 @@ wss.on('connection', (ws) => {
             clientData.room = data.room;
             clientData.username = data.username;
             
+            // Invia al nuovo arrivato la lista di tutti quelli già presenti nella stessa stanza
             const peersInRoom = [];
             clients.forEach((info, id) => {
                 if (id !== userId && info.room === data.room) {
                     peersInRoom.push({ id: id, username: info.username });
-                    
-                    // Avvisa l'utente già presente nella stanza
-                    if (info.ws.readyState === 1) {
-                        info.ws.send(JSON.stringify({ type: 'user-joined', id: userId, username: clientData.username }));
-                    }
                 }
             });
-
-            // Manda al nuovo arrivato la lista di chi è già dentro
             ws.send(JSON.stringify({ type: 'room-peers', peers: peersInRoom }));
             return;
         }
 
-        // AGGIORNATO: Smista le offerte video (offer, answer, candidate) solo se gli utenti sono nella stessa stanza
+        // Smistamento diretto dei messaggi WebRTC (offer, answer, candidate)
         if (data.target && clients.has(data.target)) {
-            const targetClient = clients.get(data.target);
-            if (targetClient && targetClient.room === clientData.room) {
-                data.sender = userId;
-                targetClient.ws.send(JSON.stringify(data));
-            }
+            data.sender = userId;
+            clients.get(data.target).ws.send(JSON.stringify(data));
         }
     });
 
