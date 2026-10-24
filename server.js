@@ -6,16 +6,23 @@ const path = require('path');
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
-    // Gestione ed isolamento pulito dell'URL ignorando i parametri per link rapidi (?room=...)
-    const cleanUrl = req.url.split('?')[0];
-    let filePath = cleanUrl === '/' ? './index.html' : `.${cleanUrl}`;
+    // Corretta estrazione del percorso escludendo i parametri di query in modo sicuro
+    const urlParts = req.url.split('?');
+    const requestPath = urlParts[0];
+    
+    let filePath = requestPath === '/' ? './index.html' : `.${requestPath}`;
     const extname = path.extname(filePath);
     let contentType = 'text/html';
     if (extname === '.js') contentType = 'text/javascript';
 
     fs.readFile(filePath, (error, content) => {
-        if (error) { res.writeHead(404); res.end('File non trovato'); }
-        else { res.writeHead(200, { 'Content-Type': contentType }); res.end(content, 'utf-8'); }
+        if (error) { 
+            res.writeHead(404); 
+            res.end('File non trovato'); 
+        } else { 
+            res.writeHead(200, { 'Content-Type': contentType }); 
+            res.end(content, 'utf-8'); 
+        }
     });
 });
 
@@ -41,7 +48,6 @@ wss.on('connection', (ws) => {
                 if (id !== userId && info.room === data.room) {
                     peersInRoom.push({ id: id, username: info.username });
                     
-                    // Notifica istantanea bidirezionale della stanza per agganciare il P2P WebRTC
                     if (info.ws.readyState === 1) {
                         info.ws.send(JSON.stringify({ type: 'user-joined', id: userId, username: clientData.username }));
                     }
