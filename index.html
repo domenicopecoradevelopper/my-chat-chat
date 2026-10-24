@@ -8,7 +8,7 @@
         * { box-sizing: border-box; }
         html, body { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
-            font-family: '-apple-system', BlinkMacSystemFont, sans-serif;
+            font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #111214; color: #fff; overflow: hidden;
         }
         .app-wrapper { display: flex; flex-direction: column; width: 100%; height: 100%; padding: 10px; }
@@ -17,8 +17,8 @@
             display: flex; justify-content: space-between; align-items: center;
             font-size: 14px; margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-shrink: 0;
         }
-        #btn-leave { background: #da373c; color: white; padding: 6px 14px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        #btn-leave:hover { background: #a92b2f; }
+        #btn-leave { background: #dc3545; color: white; padding: 6px 14px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #btn-leave:hover { background: #c82333; }
         #video-grid { flex-grow: 1; width: 100%; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; align-items: center; gap: 10px; overflow: hidden; }
         .video-container { position: relative; background: #2b2d31; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; }
         video { width: 100%; height: 100%; object-fit: cover; background: #1e1f22; }
@@ -31,11 +31,11 @@
         .login-box { background: #313338; padding: 30px; border-radius: 12px; max-width: 400px; width: 100%; text-align: center; }
         .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #1e1f22; background: #1e1f22; color: white; border-radius: 6px; font-size: 16px; text-align: center; }
         .login-box button { width: 100%; padding: 12px; background: #5865f2; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
-        .login-box .secondary-btn { background: #4e5058; }
+        .login-box .secondary-btn { background: #4e5058; color: white; }
         .error-hint { color: #f23f43; font-size: 13px; margin-top: -10px; margin-bottom: 15px; display: none; }
     </style>
-    <!-- Libreria Cloud PeerJS Ufficiale -->
-    <script src="https://unpkg.com"></script>
+    <!-- Adapter WebRTC ufficiale per rimuovere le barriere cross-browser -->
+    <script src="https://github.io"></script>
 </head>
 <body>
 
@@ -45,7 +45,7 @@
         <p>Scegli il tuo nome e inserisci un codice stanza (almeno 8 caratteri) per connetterti.</p>
         <input type="text" id="name-input" placeholder="Il tuo nome (es. Marco)" maxlength="15">
         <input type="text" id="room-input" placeholder="Codice Stanza (es. stanzatest99)" maxlength="20">
-        <div id="room-error" class="error-hint">Nome richiesto e stanza di almeno 8 caratteri (solo lettere e numeri)!</div>
+        <div id="room-error" class="error-hint">Nome richiesto e stanza di almeno 8 caratteri alfanumerici!</div>
         <button id="btn-enter-room">Accedi alla Videochat</button>
         <button id="btn-generate-room" class="secondary-btn">Genera Stanza Casuale</button>
     </div>
