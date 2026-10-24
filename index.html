@@ -11,89 +11,29 @@
             font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background: #111214; color: #fff; overflow: hidden;
         }
-        
-        /* Contenitore Principale ad altezza dinamica */
-        .app-wrapper {
-            display: flex; flex-direction: column; width: 100%; height: 100%; padding: 10px;
-        }
-
-        /* Barra di Stato superiore compatta */
+        .app-wrapper { display: flex; flex-direction: column; width: 100%; height: 100%; padding: 10px; }
         .top-bar {
             background: #1e1f22; padding: 10px 15px; border-radius: 8px;
             display: flex; justify-content: space-between; align-items: center;
-            font-size: 14px; margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            flex-shrink: 0;
+            font-size: 14px; margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-shrink: 0;
         }
-        .room-info strong { color: #5865f2; }
-        
-        #btn-leave { 
-            background: #da373c; color: white; padding: 6px 14px; border: none; 
-            border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px;
-        }
+        #btn-leave { background: #da373c; color: white; padding: 6px 14px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; }
         #btn-leave:hover { background: #a92b2f; }
-
-        /* Griglia Video Adattiva ad Area Massima */
-        #video-grid {
-            flex-grow: 1; width: 100%; display: flex; flex-wrap: wrap;
-            justify-content: center; align-content: center; align-items: center;
-            gap: 10px; overflow: hidden; position: relative;
-        }
-
-        /* Box contenitore del singolo video */
-        .video-container {
-            position: relative; background: #2b2d31; border-radius: 8px;
-            overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            display: flex; align-items: center; justify-content: center;
-            transition: all 0.2s ease-in-out;
-        }
-
-        video { 
-            width: 100%; height: 100%; object-fit: cover; 
-            background: #1e1f22;
-        }
-        .local-video { transform: scaleX(-1); } /* Effetto specchio solo per se stessi */
-
-        .video-label {
-            position: absolute; bottom: 10px; left: 10px; 
-            background: rgba(0, 0, 0, 0.65); color: white; 
-            padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500;
-            backdrop-filter: blur(4px); z-index: 2;
-        }
-        
-        .video-controls {
-            position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 10;
-        }
-        .ctrl-btn {
-            background: rgba(0, 0, 0, 0.6); color: white; border: none; 
-            padding: 6px 10px; border-radius: 5px; cursor: pointer; 
-            font-size: 11px; font-weight: bold; backdrop-filter: blur(4px);
-        }
+        #video-grid { flex-grow: 1; width: 100%; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; align-items: center; gap: 10px; overflow: hidden; position: relative; }
+        .video-container { position: relative; background: #2b2d31; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; transition: all 0.2s ease-in-out; }
+        video { width: 100%; height: 100%; object-fit: cover; background: #1e1f22; }
+        .local-video { transform: scaleX(-1); }
+        .video-label { position: absolute; bottom: 10px; left: 10px; background: rgba(0, 0, 0, 0.65); color: white; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; backdrop-filter: blur(4px); z-index: 2; }
+        .video-controls { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 10; }
+        .ctrl-btn { background: rgba(0, 0, 0, 0.6); color: white; border: none; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: bold; backdrop-filter: blur(4px); }
         .ctrl-btn:hover { background: rgba(255,255,255,0.2); }
         .ctrl-btn.disabled { background: #f23f43; color: white; }
-
-        /* Schermata di blocco iniziale (Login flessibile) */
-        #room-overlay { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: #1e1f22; z-index: 999; display: flex; align-items: center; justify-content: center; 
-            padding: 20px;
-        }
-        .login-box { 
-            background: #313338; padding: 30px; border-radius: 12px; 
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-width: 400px; width: 100%; 
-        }
+        #room-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1e1f22; z-index: 999; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .login-box { background: #313338; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-width: 400px; width: 100%; }
         .login-box h2 { margin-top: 0; color: #fff; font-size: 24px; }
         .login-box p { color: #b5bac1; font-size: 14px; margin-bottom: 20px; }
-        .login-box input { 
-            width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #1e1f22; 
-            background: #1e1f22; color: white; border-radius: 6px; font-size: 16px; 
-            box-sizing: border-box; text-align: center;
-        }
-        .login-box input:focus { outline: 2px solid #5865f2; }
-        .login-box button { 
-            width: 100%; padding: 12px; background: #5865f2; color: white; 
-            border: none; border-radius: 6px; font-size: 16px; font-weight: bold; 
-            cursor: pointer; margin-bottom: 10px; transition: background 0.2s;
-        }
+        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #1e1f22; background: #1e1f22; color: white; border-radius: 6px; font-size: 16px; box-sizing: border-box; text-align: center; }
+        .login-box button { width: 100%; padding: 12px; background: #5865f2; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
         .login-box button:hover { background: #4752c4; }
         .login-box .secondary-btn { background: #4e5058; }
         .login-box .secondary-btn:hover { background: #6d6f78; }
@@ -101,7 +41,6 @@
     </style>
 </head>
 <body>
-
 <div id="room-overlay">
     <div class="login-box">
         <h2>Entra in Chiamata</h2>
@@ -113,7 +52,6 @@
         <button id="btn-generate-room" class="secondary-btn">Genera Stanza Casuale</button>
     </div>
 </div>
-
 <div class="app-wrapper">
     <div class="top-bar">
         <div class="room-info">
@@ -125,8 +63,6 @@
     </div>
     <div id="video-grid"></div>
 </div>
-
-<!-- Libreria ufficiale per garantire la compatibilità WebRTC tra Firefox, Chrome e Safari Mobile -->
 <script src="https://github.io"></script>
 <script src="app.js"></script>
 </body>
