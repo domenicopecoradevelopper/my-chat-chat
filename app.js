@@ -10,19 +10,12 @@ const btnLeave = document.getElementById('btn-leave');
 const videoGrid = document.getElementById('video-grid');
 const myIdDisplay = document.getElementById('my-id');
 
-// Lista di server STUN pubblici internazionali ad altissima disponibilità (Google, Mozilla, 3CX)
-// Questa configurazione garantisce lo scambio dell'indirizzo IP pubblico in ogni condizione di rete
 const rtcConfig = { 
     iceServers: [
         { urls: 'stun:://google.com' },
         { urls: 'stun:://google.com' },
-        { urls: 'stun:://google.com' },
-        { urls: 'stun:://google.com' },
-        { urls: 'stun:://google.com' },
-        { urls: 'stun:://mozilla.com' },
-        { urls: 'stun:://3cx.com' }
-    ],
-    iceCandidatePoolSize: 10
+        { urls: 'stun:://google.com' }
+    ]
 };
 
 let localStream = null;
@@ -75,7 +68,7 @@ function avviaApplicazione() {
         })
         .catch(err => {
             console.error(err);
-            alert('Errore hardware: autorizza l\'uso di webcam e microfono per partecipare.');
+            alert('Errore hardware: autorizza webcam e microfono per partecipare.');
             roomOverlay.style.display = "flex";
         });
 }
@@ -96,26 +89,34 @@ function initWebSocket() {
 
         switch (data.type) {
             case 'room-peers':
-                // Forza l'apertura immediata del canale di comunicazione verso chi è già presente
-                data.peers.forEach(peer => makeCall(peer.id, peer.username));
+                // Riceviamo l'elenco dei presenti ma NON li chiamiamo. 
+                // Saranno loro ad avviare la chiamata verso di noi appena il server li notifica.
+                console.log("Utenti già presenti nella stanza:", data.peers);
                 break;
+                
             case 'user-joined':
-                console.log(`Rilevato utente entrato nella stanza: ${data.username}`);
+                // SBLOCCO: Chi era già nella stanza riceve la notifica e fa partire la chiamata!
+                console.log(`Nuovo utente entrato. Avvio chiamata verso: ${data.username}`);
+                makeCall(data.id, data.username);
                 break;
+                
             case 'offer':
                 await handleOffer(data.sender, data.username, data.offer);
                 break;
+                
             case 'answer':
                 if (peerConnections[data.sender]) {
                     await peerConnections[data.sender].setRemoteDescription(new RTCSessionDescription(data.answer));
                 }
                 break;
+                
             case 'candidate':
                 if (peerConnections[data.sender]) {
                     await peerConnections[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate))
-                        .catch(e => console.error("Errore aggiunta ICE candidato:", e));
+                        .catch(e => console.error("Errore ICE Candidate:", e));
                 }
                 break;
+                
             case 'user-left':
                 removeUser(data.id);
                 break;
@@ -175,12 +176,7 @@ async function createPeerConnection(peerId, remoteName) {
     };
 
     pc.ontrack = (event) => {
-        addVideoStream(remoteName, event.streams, false, peerId);
-    };
-
-    // Monitoraggio dello stato della connessione in tempo reale nella console del browser
-    pc.onconnectionstatechange = () => {
-        console.log(`Stato connessione con ${remoteName}: ${pc.connectionState}`);
+        addVideoStream(remoteName, event.streams[0], false, peerId);
     };
 
     return pc;
