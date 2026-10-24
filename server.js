@@ -6,8 +6,9 @@ const path = require('path');
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
-    const urlPath = req.url.split('?')[0];
-    let filePath = urlPath === '/' ? './index.html' : `.${urlPath}`;
+    // Estrae il percorso reale escludendo i parametri di query (?room=...)
+    const cleanUrl = req.url.split('?')[0];
+    let filePath = cleanUrl === '/' ? './index.html' : `.${cleanUrl}`;
     
     const extname = path.extname(filePath);
     let contentType = 'text/html';
@@ -31,7 +32,7 @@ wss.on('connection', (ws) => {
     const userId = Math.random().toString(36).substring(2, 9);
     clients.set(userId, { ws, room: null, username: null });
     
-    // Invia il messaggio di benvenuto iniziale
+    // Invia il benvenuto iniziale con il proprio ID temporaneo
     ws.send(JSON.stringify({ type: 'welcome', id: userId }));
 
     ws.on('message', (message) => {
@@ -42,21 +43,33 @@ wss.on('connection', (ws) => {
             clientData.room = data.room;
             clientData.username = data.username;
             
-            // Invia al nuovo arrivato la lista di tutti quelli già presenti nella stessa stanza
+            console.log(`Utente ${clientData.username} (${userId}) entrato nella stanza: ${data.room}`);
+            
             const peersInRoom = [];
             clients.forEach((info, id) => {
                 if (id !== userId && info.room === data.room) {
+                    // Raccoglie gli utenti già presenti per inviarli al nuovo arrivato
                     peersInRoom.push({ id: id, username: info.username });
+                    
+                    // Avvisa IMMEDIATAMENTE chi era già dentro della presenza del nuovo utente
+                    if (info.ws.readyState === 1) {
+                        info.ws.send(JSON.stringify({ type: 'user-joined', id: userId, username: clientData.username }));
+                    }
                 }
             });
+            
+            // Invia la lista al nuovo arrivato
             ws.send(JSON.stringify({ type: 'room-peers', peers: peersInRoom }));
             return;
         }
 
-        // Smistamento diretto dei messaggi WebRTC (offer, answer, candidate)
+        // Smistamento dei messaggi di negoziazione video (offer, answer, candidate)
         if (data.target && clients.has(data.target)) {
             data.sender = userId;
-            clients.get(data.target).ws.send(JSON.stringify(data));
+            const targetClient = clients.get(data.target);
+            if (targetClient && targetClient.ws.readyState === 1) {
+                targetClient.ws.send(JSON.stringify(data));
+            }
         }
     });
 
