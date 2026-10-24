@@ -78,7 +78,7 @@ function avviaApplicazione() {
         })
         .catch(err => {
             console.error(err);
-            alert('Errore hardware: attiva fotocamera e microfono per partecipare.');
+            alert('Errore hardware: autorizza l\'uso di webcam e microfono per connetterti.');
             roomOverlay.style.display = "flex";
         });
 }
@@ -99,12 +99,12 @@ function initWebSocket() {
 
         switch (data.type) {
             case 'room-peers':
-                // Se entriamo dopo, avviamo le chiamate verso chi è già presente
+                // Se entriamo e troviamo altri utenti, avviamo subito la chiamata verso di loro
                 data.peers.forEach(peer => makeCall(peer.id, peer.username));
                 break;
             case 'user-joined':
-                // Riceviamo la notifica dal server. Creiamo la predisposizione per accogliere l'offerta dell'altro utente
-                console.log(`Un altro utente si è unito: ${data.username}`);
+                // Chi entra dopo avvia la chiamata. Riceviamo la notifica ma attendiamo l'offerta WebRTC in arrivo
+                console.log(`Un utente si è connesso alla stanza: ${data.username}`);
                 break;
             case 'offer':
                 await handleOffer(data.sender, data.username, data.offer);
