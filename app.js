@@ -10,22 +10,19 @@ const btnLeave = document.getElementById('btn-leave');
 const videoGrid = document.getElementById('video-grid');
 const myIdDisplay = document.getElementById('my-id');
 
+// Lista di server STUN pubblici internazionali ad altissima disponibilità (Google, Mozilla, 3CX)
+// Questa configurazione garantisce lo scambio dell'indirizzo IP pubblico in ogni condizione di rete
 const rtcConfig = { 
     iceServers: [
         { urls: 'stun:://google.com' },
         { urls: 'stun:://google.com' },
-        { urls: 'stun:openrelay.metered.ca:80' },
-        { 
-            urls: 'turn:openrelay.metered.ca:443', 
-            username: 'openrelayproject', 
-            password: 'openrelayproject' 
-        },
-        { 
-            urls: 'turn:openrelay.metered.ca:443?transport=tcp', 
-            username: 'openrelayproject', 
-            password: 'openrelayproject' 
-        }
-    ] 
+        { urls: 'stun:://google.com' },
+        { urls: 'stun:://google.com' },
+        { urls: 'stun:://google.com' },
+        { urls: 'stun:://mozilla.com' },
+        { urls: 'stun:://3cx.com' }
+    ],
+    iceCandidatePoolSize: 10
 };
 
 let localStream = null;
@@ -78,7 +75,7 @@ function avviaApplicazione() {
         })
         .catch(err => {
             console.error(err);
-            alert('Errore hardware: autorizza l\'uso di webcam e microfono per connetterti.');
+            alert('Errore hardware: autorizza l\'uso di webcam e microfono per partecipare.');
             roomOverlay.style.display = "flex";
         });
 }
@@ -99,12 +96,11 @@ function initWebSocket() {
 
         switch (data.type) {
             case 'room-peers':
-                // Se entriamo e troviamo altri utenti, avviamo subito la chiamata verso di loro
+                // Forza l'apertura immediata del canale di comunicazione verso chi è già presente
                 data.peers.forEach(peer => makeCall(peer.id, peer.username));
                 break;
             case 'user-joined':
-                // Chi entra dopo avvia la chiamata. Riceviamo la notifica ma attendiamo l'offerta WebRTC in arrivo
-                console.log(`Un utente si è connesso alla stanza: ${data.username}`);
+                console.log(`Rilevato utente entrato nella stanza: ${data.username}`);
                 break;
             case 'offer':
                 await handleOffer(data.sender, data.username, data.offer);
@@ -116,7 +112,8 @@ function initWebSocket() {
                 break;
             case 'candidate':
                 if (peerConnections[data.sender]) {
-                    await peerConnections[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate));
+                    await peerConnections[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate))
+                        .catch(e => console.error("Errore aggiunta ICE candidato:", e));
                 }
                 break;
             case 'user-left':
@@ -179,6 +176,11 @@ async function createPeerConnection(peerId, remoteName) {
 
     pc.ontrack = (event) => {
         addVideoStream(remoteName, event.streams, false, peerId);
+    };
+
+    // Monitoraggio dello stato della connessione in tempo reale nella console del browser
+    pc.onconnectionstatechange = () => {
+        console.log(`Stato connessione con ${remoteName}: ${pc.connectionState}`);
     };
 
     return pc;
