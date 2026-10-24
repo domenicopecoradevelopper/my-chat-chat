@@ -13,7 +13,6 @@ const myIdDisplay = document.getElementById('my-id');
 const rtcConfig = { 
     iceServers: [
         { urls: 'stun:://google.com' },
-        { urls: 'stun:://google.com' },
         { urls: 'stun:://google.com' }
     ]
 };
@@ -89,14 +88,13 @@ function initWebSocket() {
 
         switch (data.type) {
             case 'room-peers':
-                // Riceviamo l'elenco dei presenti ma NON li chiamiamo. 
-                // Saranno loro ad avviare la chiamata verso di noi appena il server li notifica.
-                console.log("Utenti già presenti nella stanza:", data.peers);
+                // Gli utenti già presenti non fanno nulla, aspettano che chi entra invii la chiamata
+                console.log("Utenti registrati in questa stanza:", data.peers);
                 break;
                 
             case 'user-joined':
-                // SBLOCCO: Chi era già nella stanza riceve la notifica e fa partire la chiamata!
-                console.log(`Nuovo utente entrato. Avvio chiamata verso: ${data.username}`);
+                // SBLOCCO: Chi è già dentro riceve la notifica e fa partire la chiamata verso il nuovo
+                console.log(`Nuovo partecipante entrato nella stanza. Avvio chiamata verso: ${data.username}`);
                 makeCall(data.id, data.username);
                 break;
                 
@@ -113,7 +111,7 @@ function initWebSocket() {
             case 'candidate':
                 if (peerConnections[data.sender]) {
                     await peerConnections[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate))
-                        .catch(e => console.error("Errore ICE Candidate:", e));
+                        .catch(e => console.error("Errore ICE:", e));
                 }
                 break;
                 
@@ -165,6 +163,7 @@ async function createPeerConnection(peerId, remoteName) {
     const pc = new RTCPeerConnection(rtcConfig);
     peerConnections[peerId] = pc;
 
+    // Aggiunge le tracce locali PRIMA dello scambio dei segnali SDP
     if (localStream) {
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
@@ -175,8 +174,11 @@ async function createPeerConnection(peerId, remoteName) {
         }
     };
 
+    // CORREZIONE STRUTTURALE: Estrae il flusso corretto dall'array streams per la visualizzazione cross-browser
     pc.ontrack = (event) => {
-        addVideoStream(remoteName, event.streams[0], false, peerId);
+        if (event.streams && event.streams[0]) {
+            addVideoStream(remoteName, event.streams[0], false, peerId);
+        }
     };
 
     return pc;
