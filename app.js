@@ -49,11 +49,12 @@ btnGenerateRoom.addEventListener('click', () => {
 });
 
 btnEnterRoom.addEventListener('click', () => {
-    const roomCode = roomInput.value.trim().toLowerCase();
+    // Trasforma in minuscolo e rimuove spazi prima, dopo e in mezzo al testo
+    const roomCode = roomInput.value.trim().toLowerCase().replace(/\s+/g, '');
     const username = nameInput.value.trim();
-    const isAlphanumeric = /^[a-z0-9]+\$/.test(roomCode); // Espressione regolare corretta e pulita
     
-    if (!username || roomCode.length < 8 || !isAlphanumeric) {
+    // Controllo semplificato e robusto: nome non vuoto e stanza lunga almeno 8 caratteri
+    if (!username || roomCode.length < 8) {
         roomError.style.display = "block";
         return;
     }
@@ -182,7 +183,7 @@ async function createPeerConnection(peerId, remoteName) {
     };
 
     pc.ontrack = (event) => {
-        addVideoStream(remoteName, event.streams[0], false, peerId);
+        addVideoStream(remoteName, event.streams, false, peerId);
     };
 
     return pc;
