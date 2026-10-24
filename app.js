@@ -35,7 +35,7 @@ let targetRoom = "";
 let myUsername = "";
 const peerConnections = {};
 
-// Controllo URL per link diretto
+// Controllo automatico dell'URL all'apertura
 const urlParams = new URLSearchParams(window.location.search);
 const roomFromUrl = urlParams.get('room');
 if (roomFromUrl) {
@@ -71,7 +71,6 @@ btnEnterRoom.addEventListener('click', () => {
 });
 
 function avviaApplicazione() {
-    // Forziamo sempre una richiesta hardware pulita ad ogni accesso alla stanza
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         .then(stream => {
             localStream = stream;
@@ -80,7 +79,7 @@ function avviaApplicazione() {
         })
         .catch(err => {
             console.error(err);
-            alert('Impossibile accedere a fotocamera e microfono. Controlla i permessi del browser.');
+            alert('Errore hardware: attiva webcam e microfono per accedere.');
             roomOverlay.style.display = "flex";
         });
 }
@@ -101,11 +100,12 @@ function initWebSocket() {
 
         switch (data.type) {
             case 'room-peers':
+                // Avvia la chiamata verso tutti gli utenti già presenti
                 data.peers.forEach(peer => makeCall(peer.id, peer.username));
                 break;
             case 'user-joined':
-                console.log(`Utente connesso: ${data.username}`);
-                makeCall(data.id, data.username);
+                // Resta in ascolto: chi entra avvia la connessione verso i vecchi peer
+                console.log(`Rilevato nuovo utente: ${data.username}`);
                 break;
             case 'offer':
                 await handleOffer(data.sender, data.username, data.offer);
@@ -179,7 +179,7 @@ async function createPeerConnection(peerId, remoteName) {
     };
 
     pc.ontrack = (event) => {
-        addVideoStream(remoteName, event.streams, false, peerId);
+        addVideoStream(remoteName, event.streams[0], false, peerId);
     };
 
     return pc;
@@ -270,30 +270,20 @@ function removeUser(peerId) {
 }
 
 btnLeave.addEventListener('click', () => {
-    // 1. Chiudiamo il canale di segnalazione
     if (ws) { ws.close(); ws = null; }
-    
-    // 2. Chiudiamo tutte le connessioni P2P
     for (let peerId in peerConnections) { removeUser(peerId); }
     
-    // 3. Spegniamo fisicamente la telecamera e il microfono per liberare l'hardware
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
     }
     
-    // 4. Svuotiamo l'interfaccia grafica
     videoGrid.innerHTML = '';
     myIdDisplay.innerText = '-';
     activeRoomText.innerText = '-';
-    
-    // 5. CANCELLIAMO i valori inseriti dall'utente nei moduli di login
     nameInput.value = '';
     roomInput.value = '';
     
-    // 6. Resettiamo l'URL rimuovendo la stanza
     window.history.replaceState({}, '', window.location.pathname);
-    
-    // 7. Torniamo alla schermata iniziale
     roomOverlay.style.display = "flex";
 });
