@@ -9,11 +9,21 @@ const myNameText = document.getElementById('my-name-text');
 const btnLeave = document.getElementById('btn-leave');
 const videoGrid = document.getElementById('video-grid');
 
+const rtcConfig = { 
+    iceServers: [
+        { urls: 'stun:://google.com' },
+        { urls: 'stun:://google.com' },
+        { urls: 'stun:openrelay.metered.ca:80' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', password: 'openrelayproject' }
+    ] 
+};
+
 let localStream = null;
-let peer = null;
+let myId = null;
+let ws = null;
 let targetRoom = "";
 let myUsername = "";
-const activeCalls = {};
+const peerConnections = {};
 
 const urlParams = new URLSearchParams(window.location.search);
 const roomFromUrl = urlParams.get('room');
@@ -42,20 +52,19 @@ btnEnterRoom.addEventListener('click', () => {
     
     window.history.replaceState({}, '', `${window.location.origin}${window.location.pathname}?room=${targetRoom}`);
     roomOverlay.style.display = "none";
-    
     avviaMedia();
 });
 
 function avviaMedia() {
     if (localStream) {
         addVideoStream(`${myUsername} (Tu)`, localStream, true);
-        connettiPeerCloud();
+        initWebSocket();
     } else {
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then(stream => {
                 localStream = stream;
                 addVideoStream(`${myUsername} (Tu)`, stream, true);
-                connettiPeerCloud();
+                initWebSocket();
             })
             .catch(err => {
                 console.error(err);
@@ -65,54 +74,85 @@ function avviaMedia() {
     }
 }
 
-function connettiPeerCloud() {
-    // Generiamo un ID unico composto da: nomeStanza + separatore + stringaCasuale
-    const myUniqueId = `${targetRoom}---${myUsername}---${Math.random().toString(36).substring(2, 6)}`;
-    
-    peer = new Peer(myUniqueId, {
-        debug: 1,
-        config: { iceServers: [{ urls: 'stun:://google.com' }, { urls: 'stun:://google.com' }] }
-    });
+function initWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    ws = new WebSocket(`${protocol}${window.location.host}`);
 
-    peer.on('open', (id) => {
-        console.log("Connesso al Cloud PeerJS con ID:", id);
-        
-        // Cerca tutti gli altri client connessi globalmente e filtra quelli nella stessa stanza
-        setTimeout(() => {
-            peer.listAllPeers((allPeers) => {
-                allPeers.forEach(peerId => {
-                    if (peerId.startsWith(`${targetRoom}---`) && peerId !== myUniqueId) {
-                        const parts = peerId.split('---');
-                        const remoteUsername = parts[1];
-                        
-                        console.log("Chiamata verso l'utente remoto:", remoteUsername);
-                        const call = peer.call(peerId, localStream);
-                        gestisciFlussoChiamata(call, remoteUsername, peerId);
-                    }
-                });
-            });
-        }, 1500); // Ritardo per dare tempo al cloud di registrare la nostra presenza
-    });
+    ws.onmessage = async (message) => {
+        const data = JSON.parse(message.data);
 
-    // Risposta automatica alle chiamate in entrata
-    peer.on('call', (call) => {
-        call.answer(localStream);
-        const parts = call.peer.split('---');
-        const remoteUsername = parts[1];
-        console.log("Ricezione chiamata da:", remoteUsername);
-        gestisciFlussoChiamata(call, remoteUsername, call.peer);
-    });
+        if (data.type === 'welcome') {
+            myId = data.id;
+            ws.send(JSON.stringify({ type: 'join-room', room: targetRoom, username: myUsername }));
+            return;
+        }
+
+        switch (data.type) {
+            case 'room-peers':
+                // Se entriamo dopo, avviamo noi la chiamata verso tutti quelli già presenti
+                data.peers.forEach(peer => creaConnessioneP2P(peer.id, peer.username, true));
+                break;
+            case 'user-joined':
+                // Se eravamo già dentro, creiamo lo spazio per l'altro in attesa dell'offerta
+                creaConnessioneP2P(data.id, data.username, false);
+                break;
+            case 'offer':
+                await gestisciOffertaRemota(data.sender, data.username, data.offer);
+                break;
+            case 'answer':
+                if (peerConnections[data.sender]) {
+                    await peerConnections[data.sender].setRemoteDescription(new RTCSessionDescription(data.answer));
+                }
+                break;
+            case 'candidate':
+                if (peerConnections[data.sender]) {
+                    try {
+                        await peerConnections[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate));
+                    } catch (e) { console.error("Errore ICE:", e); }
+                }
+                break;
+            case 'user-left':
+                rimuoviUtente(data.id);
+                break;
+        }
+    };
 }
 
-function gestisciFlussoChiamata(call, remoteName, peerId) {
-    call.on('stream', (remoteStream) => {
-        addVideoStream(remoteName, remoteStream, false, peerId);
-        activeCalls[peerId] = call;
-    });
-    
-    call.on('close', () => {
-        rimuoviVideoUtente(peerId);
-    });
+async function creaConnessioneP2P(peerId, remoteName, isInitiator) {
+    if (peerConnections[peerId]) return peerConnections[peerId];
+
+    const pc = new RTCPeerConnection(rtcConfig);
+    peerConnections[peerId] = pc;
+
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    pc.onicecandidate = (event) => {
+        if (event.candidate && ws?.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'candidate', target: peerId, candidate: event.candidate }));
+        }
+    };
+
+    pc.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+            addVideoStream(remoteName, event.streams[0], false, peerId);
+        }
+    };
+
+    if (isInitiator) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        ws.send(JSON.stringify({ type: 'offer', target: peerId, offer: offer, username: myUsername }));
+    }
+
+    return pc;
+}
+
+async function gestisciOffertaRemota(peerId, remoteName, offer) {
+    const pc = await creaConnessioneP2P(peerId, remoteName, false);
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    ws.send(JSON.stringify({ type: 'answer', target: peerId, answer: answer }));
 }
 
 function recalculateLayout() {
@@ -138,19 +178,24 @@ window.addEventListener('resize', recalculateLayout);
 function addVideoStream(label, stream, isLocal, peerId = null) {
     const streamId = peerId ? `v-${peerId}` : 'v-local';
     if (document.getElementById(streamId)) return;
+
     const container = document.createElement('div');
     container.className = 'video-container';
     container.id = streamId;
+
     const video = document.createElement('video');
     video.srcObject = stream;
     video.autoplay = true;
     video.playsInline = true;
     if (isLocal) { video.muted = true; video.classList.add('local-video'); }
+
     const divLabel = document.createElement('div');
     divLabel.className = 'video-label';
     divLabel.innerText = label;
+
     const controls = document.createElement('div');
     controls.className = 'video-controls';
+
     if (isLocal) {
         const btnAudio = document.createElement('button');
         btnAudio.className = 'ctrl-btn';
@@ -166,24 +211,22 @@ function addVideoStream(label, stream, isLocal, peerId = null) {
         };
         controls.append(btnAudio, btnVideo);
     }
+
     container.append(video, divLabel, controls);
     videoGrid.append(container);
     recalculateLayout();
 }
 
-function rimuoviVideoUtente(peerId) {
-    if (activeCalls[peerId]) {
-        activeCalls[peerId].close();
-        delete activeCalls[peerId];
-    }
+function rimuoviUtente(peerId) {
+    if (peerConnections[peerId]) { peerConnections[peerId].close(); delete peerConnections[peerId]; }
     const el = document.getElementById(`v-${peerId}`);
     if (el) el.remove();
     recalculateLayout();
 }
 
 btnLeave.addEventListener('click', () => {
-    if (peer) { peer.destroy(); peer = null; }
-    for (let pId in activeCalls) { rimuoviVideoUtente(pId); }
+    if (ws) { ws.close(); ws = null; }
+    for (let pId in peerConnections) rimuoviUtente(pId);
     videoGrid.innerHTML = '';
     window.history.replaceState({}, '', window.location.pathname);
     roomOverlay.style.display = "flex";
