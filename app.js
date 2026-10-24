@@ -10,7 +10,24 @@ const btnLeave = document.getElementById('btn-leave');
 const videoGrid = document.getElementById('video-grid');
 const myIdDisplay = document.getElementById('my-id');
 
-const rtcConfig = { iceServers: [{ urls: 'stun:://google.com' }, { urls: 'stun:://google.com' }] };
+// Configurazione di rete potenziata: Server STUN di Google + Server TURN/STUN di OpenRelay per scavalcare qualsiasi Firewall/NAT
+const rtcConfig = { 
+    iceServers: [
+        { urls: 'stun:://google.com' },
+        { urls: 'stun:://google.com' },
+        { urls: 'stun:openrelay.metered.ca:80' },
+        { 
+            urls: 'turn:openrelay.metered.ca:443', 
+            username: 'openrelayproject', 
+            password: 'openrelayproject' 
+        },
+        { 
+            urls: 'turn:openrelay.metered.ca:443?transport=tcp', 
+            username: 'openrelayproject', 
+            password: 'openrelayproject' 
+        }
+    ] 
+};
 
 let localStream = null;
 let myId = null;
@@ -34,7 +51,7 @@ btnGenerateRoom.addEventListener('click', () => {
 btnEnterRoom.addEventListener('click', () => {
     const roomCode = roomInput.value.trim().toLowerCase();
     const username = nameInput.value.trim();
-    const isAlphanumeric = /^[a-z0-9]+$/.test(roomCode); // Corretta espressione regolare senza escape errati
+    const isAlphanumeric = /^[a-z0-9]+\$/.test(roomCode); // Espressione regolare corretta e pulita
     
     if (!username || roomCode.length < 8 || !isAlphanumeric) {
         roomError.style.display = "block";
@@ -48,7 +65,6 @@ btnEnterRoom.addEventListener('click', () => {
     activeRoomText.innerText = targetRoom;
     myNameText.innerText = myUsername;
     
-    // Aggiorna l'URL della barra degli indirizzi per la condivisione rapida
     const newUrl = `${window.location.origin}${window.location.pathname}?room=${targetRoom}`;
     window.history.replaceState({}, '', newUrl);
     
@@ -90,11 +106,9 @@ function initWebSocket() {
 
         switch (data.type) {
             case 'room-peers':
-                // Chiamiamo tutti i presenti
                 data.peers.forEach(peer => makeCall(peer.id, peer.username));
                 break;
             case 'user-joined':
-                // Se qualcuno si unisce dopo di noi, avviamo subito la chiamata verso di lui
                 console.log(`Utente connesso: ${data.username}`);
                 makeCall(data.id, data.username);
                 break;
@@ -118,7 +132,6 @@ function initWebSocket() {
     };
 }
 
-// Algoritmo Geometrico di Adattamento Schermo fluido (Zoom-Style)
 function recalculateLayout() {
     const containers = videoGrid.querySelectorAll('.video-container');
     const count = containers.length;
@@ -169,7 +182,7 @@ async function createPeerConnection(peerId, remoteName) {
     };
 
     pc.ontrack = (event) => {
-        addVideoStream(remoteName, event.streams, false, peerId);
+        addVideoStream(remoteName, event.streams[0], false, peerId);
     };
 
     return pc;
@@ -256,19 +269,15 @@ function removeUser(peerId) {
     }
     const el = document.getElementById(`v-${peerId}`);
     if (el) el.remove();
-    
-    recalculateLayout(); // Forza ricalcolo al distacco degli utenti
+    recalculateLayout();
 }
 
 btnLeave.addEventListener('click', () => {
     if (ws) { ws.close(); ws = null; }
     for (let peerId in peerConnections) { removeUser(peerId); }
-    
-    // Resetta l'interfaccia utente locale
     videoGrid.innerHTML = '';
     myIdDisplay.innerText = '-';
     activeRoomText.innerText = '-';
-    
     window.history.replaceState({}, '', window.location.pathname);
     roomOverlay.style.display = "flex";
 });
