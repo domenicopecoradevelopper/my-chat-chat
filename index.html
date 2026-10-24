@@ -8,7 +8,7 @@
         * { box-sizing: border-box; }
         html, body { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
-            font-family: '-apple-system', BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: '-apple-system', BlinkMacSystemFont, sans-serif;
             background: #111214; color: #fff; overflow: hidden;
         }
         .app-wrapper { display: flex; flex-direction: column; width: 100%; height: 100%; padding: 10px; }
@@ -17,53 +17,51 @@
             display: flex; justify-content: space-between; align-items: center;
             font-size: 14px; margin-bottom: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); flex-shrink: 0;
         }
-        #btn-leave { background: #da373c; color: white; padding: 6px 14px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; }
+        #btn-leave { background: #da373c; color: white; padding: 6px 14px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
         #btn-leave:hover { background: #a92b2f; }
-        #video-grid { flex-grow: 1; width: 100%; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; align-items: center; gap: 10px; overflow: hidden; position: relative; }
-        .video-container { position: relative; background: #2b2d31; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; transition: all 0.2s ease-in-out; }
+        #video-grid { flex-grow: 1; width: 100%; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; align-items: center; gap: 10px; overflow: hidden; }
+        .video-container { position: relative; background: #2b2d31; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; }
         video { width: 100%; height: 100%; object-fit: cover; background: #1e1f22; }
         .local-video { transform: scaleX(-1); }
-        .video-label { position: absolute; bottom: 10px; left: 10px; background: rgba(0, 0, 0, 0.65); color: white; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; backdrop-filter: blur(4px); z-index: 2; }
+        .video-label { position: absolute; bottom: 10px; left: 10px; background: rgba(0, 0, 0, 0.65); color: white; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; }
         .video-controls { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 10; }
-        .ctrl-btn { background: rgba(0, 0, 0, 0.6); color: white; border: none; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: bold; backdrop-filter: blur(4px); }
-        .ctrl-btn:hover { background: rgba(255,255,255,0.2); }
-        .ctrl-btn.disabled { background: #f23f43; color: white; }
+        .ctrl-btn { background: rgba(0, 0, 0, 0.6); color: white; border: none; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: bold; }
+        .ctrl-btn.disabled { background: #f23f43; }
         #room-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1e1f22; z-index: 999; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .login-box { background: #313338; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); max-width: 400px; width: 100%; }
-        .login-box h2 { margin-top: 0; color: #fff; font-size: 24px; }
-        .login-box p { color: #b5bac1; font-size: 14px; margin-bottom: 20px; }
-        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #1e1f22; background: #1e1f22; color: white; border-radius: 6px; font-size: 16px; box-sizing: border-box; text-align: center; }
+        .login-box { background: #313338; padding: 30px; border-radius: 12px; max-width: 400px; width: 100%; text-align: center; }
+        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #1e1f22; background: #1e1f22; color: white; border-radius: 6px; font-size: 16px; text-align: center; }
         .login-box button { width: 100%; padding: 12px; background: #5865f2; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
-        .login-box button:hover { background: #4752c4; }
         .login-box .secondary-btn { background: #4e5058; }
-        .login-box .secondary-btn:hover { background: #6d6f78; }
-        .error-hint { color: #f23f43; font-size: 13px; margin-top: -10px; margin-bottom: 15px; display: none; text-align: center; }
+        .error-hint { color: #f23f43; font-size: 13px; margin-top: -10px; margin-bottom: 15px; display: none; }
     </style>
+    <!-- Libreria Cloud PeerJS Ufficiale -->
+    <script src="https://unpkg.com"></script>
 </head>
 <body>
+
 <div id="room-overlay">
     <div class="login-box">
         <h2>Entra in Chiamata</h2>
-        <p>Scegli il tuo nome e inserisci un codice stanza (almeno 8 caratteri alfanumerici) per connetterti.</p>
+        <p>Scegli il tuo nome e inserisci un codice stanza (almeno 8 caratteri) per connetterti.</p>
         <input type="text" id="name-input" placeholder="Il tuo nome (es. Marco)" maxlength="15">
-        <input type="text" id="room-input" placeholder="Codice Stanza (es. stanza99x)" maxlength="20">
-        <div id="room-error" class="error-hint">Nome richiesto e codice stanza di almeno 8 caratteri alfanumerici!</div>
+        <input type="text" id="room-input" placeholder="Codice Stanza (es. stanzatest99)" maxlength="20">
+        <div id="room-error" class="error-hint">Nome richiesto e stanza di almeno 8 caratteri (solo lettere e numeri)!</div>
         <button id="btn-enter-room">Accedi alla Videochat</button>
         <button id="btn-generate-room" class="secondary-btn">Genera Stanza Casuale</button>
     </div>
 </div>
+
 <div class="app-wrapper">
     <div class="top-bar">
         <div class="room-info">
             Stanza: <span id="active-room-text" style="color: #5865f2;">-</span> | 
-            Utente: <span id="my-name-text" style="color: #23a55a;">-</span> | 
-            ID: <span id="my-id" style="color: #b5bac1;">-</span>
+            Utente: <span id="my-name-text" style="color: #23a55a;">-</span>
         </div>
         <button id="btn-leave">Abbandona</button>
     </div>
     <div id="video-grid"></div>
 </div>
-<script src="https://github.io"></script>
+
 <script src="app.js"></script>
 </body>
 </html>
