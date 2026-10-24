@@ -24,7 +24,7 @@ const server = http.createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ server });
-const rooms = new Map(); // roomName -> Map(userId -> { ws, username })
+const rooms = new Map(); 
 
 wss.on('connection', (ws) => {
     let currentRoom = null;
@@ -40,18 +40,15 @@ wss.on('connection', (ws) => {
             }
             
             const roomClients = rooms.get(currentRoom);
-            
-            // Invia al nuovo arrivato la lista di chi è GIÀ presente nella stanza
             const peersInRoom = [];
+            
             roomClients.forEach((info, id) => {
                 peersInRoom.push({ id: id, username: info.username });
             });
+            
             ws.send(JSON.stringify({ type: 'room-peers', peers: peersInRoom, myId: myUserId }));
-
-            // Salva il nuovo utente nella stanza
             roomClients.set(myUserId, { ws, username: data.username });
 
-            // Avvisa TUTTI gli altri utenti già presenti che è entrato qualcuno
             roomClients.forEach((info, id) => {
                 if (id !== myUserId && info.ws.readyState === 1) {
                     info.ws.send(JSON.stringify({ type: 'user-joined', id: myUserId, username: data.username }));
@@ -60,7 +57,6 @@ wss.on('connection', (ws) => {
             return;
         }
 
-        // Smistamento dei messaggi di rete WebRTC (Offer, Answer, Candidates)
         if (currentRoom && rooms.has(currentRoom)) {
             const roomClients = rooms.get(currentRoom);
             if (data.target && roomClients.has(data.target)) {
@@ -78,7 +74,6 @@ wss.on('connection', (ws) => {
             const roomClients = rooms.get(currentRoom);
             roomClients.delete(myUserId);
             
-            // Avvisa i rimasti che l'utente è uscito
             roomClients.forEach((info) => {
                 if (info.ws.readyState === 1) {
                     info.ws.send(JSON.stringify({ type: 'user-left', id: myUserId }));
