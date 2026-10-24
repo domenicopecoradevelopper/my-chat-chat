@@ -153,6 +153,7 @@ async function createPeerConnection(peerId, remoteName) {
     };
 
     pc.ontrack = (event) => {
+        // Corretto aggancio cross-browser prendendo lo stream nativo aggregato
         if (event.streams && event.streams[0]) {
             addVideoStream(remoteName, event.streams[0], false, peerId);
         }
@@ -180,6 +181,7 @@ async function handleOffer(peerId, remoteName, offer) {
     }
 }
 
+// SBLOCCO CRITICO AUTOPLAY: Forza la riproduzione asincrona superando i blocchi di Firefox/Chrome
 function addVideoStream(label, stream, isLocal, peerId = null) {
     const streamId = peerId ? `v-${peerId}` : 'v-local';
     if (document.getElementById(streamId)) return;
@@ -189,10 +191,29 @@ function addVideoStream(label, stream, isLocal, peerId = null) {
     container.id = streamId;
 
     const video = document.createElement('video');
-    video.srcObject = stream;
-    video.autoplay = true;
+    
+    // Configurazione nativa preventiva obbligatoria del DOM
     video.playsInline = true;
-    if (isLocal) { video.muted = true; video.classList.add('local-video'); }
+    video.autoplay = true;
+    
+    if (isLocal) { 
+        video.muted = true; 
+        video.classList.add('local-video'); 
+    }
+
+    video.srcObject = stream;
+
+    // Forza l'avvio della riproduzione catturando l'errore se il browser tenta il blocco autoplay
+    video.addEventListener('loadedmetadata', () => {
+        video.play().catch(error => {
+            console.log("Riproduzione intercettata dal browser, tentativo di sblocco forzato:", error);
+            // Fallback: se il browser blocca l'audio remoto, lo mutiamo temporaneamente per far partire lo schermo
+            if (!isLocal) {
+                video.muted = true;
+                video.play();
+            }
+        });
+    });
 
     const divLabel = document.createElement('div');
     divLabel.className = 'video-label';
