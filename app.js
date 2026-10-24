@@ -89,11 +89,9 @@ function initWebSocket() {
 
         switch (data.type) {
             case 'room-peers':
-                // Se entriamo dopo, avviamo noi la chiamata verso tutti quelli già presenti
                 data.peers.forEach(peer => creaConnessioneP2P(peer.id, peer.username, true));
                 break;
             case 'user-joined':
-                // Se eravamo già dentro, creiamo lo spazio per l'altro in attesa dell'offerta
                 creaConnessioneP2P(data.id, data.username, false);
                 break;
             case 'offer':
@@ -108,7 +106,7 @@ function initWebSocket() {
                 if (peerConnections[data.sender]) {
                     try {
                         await peerConnections[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate));
-                    } catch (e) { console.error("Errore ICE:", e); }
+                    } catch (e) { console.error(e); }
                 }
                 break;
             case 'user-left':
@@ -132,7 +130,9 @@ async function creaConnessioneP2P(peerId, remoteName, isInitiator) {
         }
     };
 
+    // Correzione Cross-Browser: Forziamo la cattura dello stream remoto e l'avvio immediato
     pc.ontrack = (event) => {
+        console.log("Traccia ricevuta da:", remoteName);
         if (event.streams && event.streams[0]) {
             addVideoStream(remoteName, event.streams[0], false, peerId);
         }
@@ -177,9 +177,11 @@ window.addEventListener('resize', recalculateLayout);
 
 function addVideoStream(label, stream, isLocal, peerId = null) {
     const streamId = peerId ? `v-${peerId}` : 'v-local';
-    if (document.getElementById(streamId)) return;
+    let container = document.getElementById(streamId);
+    
+    if (container) return;
 
-    const container = document.createElement('div');
+    container = document.createElement('div');
     container.className = 'video-container';
     container.id = streamId;
 
@@ -187,7 +189,15 @@ function addVideoStream(label, stream, isLocal, peerId = null) {
     video.srcObject = stream;
     video.autoplay = true;
     video.playsInline = true;
-    if (isLocal) { video.muted = true; video.classList.add('local-video'); }
+    
+    // Attributo critico per iOS Safari e Chrome Mobile
+    video.setAttribute('playsinline', true);
+    video.setAttribute('webkit-playsinline', true);
+    
+    if (isLocal) { 
+        video.muted = true; 
+        video.classList.add('local-video'); 
+    }
 
     const divLabel = document.createElement('div');
     divLabel.className = 'video-label';
@@ -214,6 +224,10 @@ function addVideoStream(label, stream, isLocal, peerId = null) {
 
     container.append(video, divLabel, controls);
     videoGrid.append(container);
+    
+    // Risoluzione Blocco Autoplay: Forziamo il browser ad avviare la riproduzione del flusso
+    video.play().catch(e => console.log("Attivazione autoplay forzata", e));
+    
     recalculateLayout();
 }
 
