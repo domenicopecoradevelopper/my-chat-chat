@@ -8,25 +8,12 @@ const activeRoomText = document.getElementById('active-room-text');
 const myNameText = document.getElementById('my-name-text');
 const btnLeave = document.getElementById('btn-leave');
 const videoGrid = document.getElementById('video-grid');
-const myIdDisplay = document.getElementById('my-id');
-
-const rtcConfig = { 
-    iceServers: [
-        { urls: 'stun:://google.com' },
-        { urls: 'stun:://google.com' },
-        { urls: 'stun:openrelay.metered.ca:80' },
-        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', password: 'openrelayproject' }
-    ] 
-};
 
 let localStream = null;
-let myId = null;
-let ws = null;
+let peer = null;
 let targetRoom = "";
 let myUsername = "";
-
-const peerConnections = {};
-const iceCandidatesQueue = {};
+const activeCalls = {};
 
 const urlParams = new URLSearchParams(window.location.search);
 const roomFromUrl = urlParams.get('room');
@@ -40,125 +27,92 @@ btnGenerateRoom.addEventListener('click', () => {
 btnEnterRoom.addEventListener('click', () => {
     const roomCode = roomInput.value.trim().toLowerCase();
     const username = nameInput.value.trim();
+    
     if (!username || roomCode.length < 8 || !/^[a-z0-9]+$/.test(roomCode)) {
         roomError.style.display = "block";
         return;
     }
+    
     roomError.style.display = "none";
     targetRoom = roomCode;
     myUsername = username;
+    
     activeRoomText.innerText = targetRoom;
     myNameText.innerText = myUsername;
+    
     window.history.replaceState({}, '', `${window.location.origin}${window.location.pathname}?room=${targetRoom}`);
     roomOverlay.style.display = "none";
-    avviaApplicazione();
+    
+    avviaMedia();
 });
 
-function avviaApplicazione() {
+function avviaMedia() {
     if (localStream) {
         addVideoStream(`${myUsername} (Tu)`, localStream, true);
-        initWebSocket();
+        connettiPeerCloud();
     } else {
         navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             .then(stream => {
                 localStream = stream;
                 addVideoStream(`${myUsername} (Tu)`, stream, true);
-                initWebSocket();
+                connettiPeerCloud();
             })
             .catch(err => {
                 console.error(err);
-                alert('Attiva fotocamera e microfono.');
+                alert('Attiva fotocamera e microfono per partecipare.');
                 roomOverlay.style.display = "flex";
             });
     }
 }
 
-function initWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    ws = new WebSocket(`${protocol}${window.location.host}`);
-    ws.onmessage = async (message) => {
-        const data = JSON.parse(message.data);
-        if (data.type === 'welcome') {
-            myId = data.id;
-            myIdDisplay.innerText = myId;
-            ws.send(JSON.stringify({ type: 'join-room', room: targetRoom, username: myUsername }));
-            return;
-        }
-        switch (data.type) {
-            case 'room-peers':
-                data.peers.forEach(p => createPeerConnection(p.id, p.username, true));
-                break;
-            case 'user-joined':
-                createPeerConnection(data.id, data.username, false);
-                break;
-            case 'offer':
-                await handleOffer(data.sender, data.username, data.offer);
-                break;
-            case 'answer':
-                if (peerConnections[data.sender]) await peerConnections[data.sender].setRemoteDescription(new RTCSessionDescription(data.answer));
-                processQueue(data.sender);
-                break;
-            case 'candidate':
-                await handleCandidate(data.sender, data.candidate);
-                break;
-            case 'user-left':
-                removeUser(data.id);
-                break;
-        }
-    };
+function connettiPeerCloud() {
+    // Generiamo un ID unico composto da: nomeStanza + separatore + stringaCasuale
+    const myUniqueId = `${targetRoom}---${myUsername}---${Math.random().toString(36).substring(2, 6)}`;
+    
+    peer = new Peer(myUniqueId, {
+        debug: 1,
+        config: { iceServers: [{ urls: 'stun:://google.com' }, { urls: 'stun:://google.com' }] }
+    });
+
+    peer.on('open', (id) => {
+        console.log("Connesso al Cloud PeerJS con ID:", id);
+        
+        // Cerca tutti gli altri client connessi globalmente e filtra quelli nella stessa stanza
+        setTimeout(() => {
+            peer.listAllPeers((allPeers) => {
+                allPeers.forEach(peerId => {
+                    if (peerId.startsWith(`${targetRoom}---`) && peerId !== myUniqueId) {
+                        const parts = peerId.split('---');
+                        const remoteUsername = parts[1];
+                        
+                        console.log("Chiamata verso l'utente remoto:", remoteUsername);
+                        const call = peer.call(peerId, localStream);
+                        gestisciFlussoChiamata(call, remoteUsername, peerId);
+                    }
+                });
+            });
+        }, 1500); // Ritardo per dare tempo al cloud di registrare la nostra presenza
+    });
+
+    // Risposta automatica alle chiamate in entrata
+    peer.on('call', (call) => {
+        call.answer(localStream);
+        const parts = call.peer.split('---');
+        const remoteUsername = parts[1];
+        console.log("Ricezione chiamata da:", remoteUsername);
+        gestisciFlussoChiamata(call, remoteUsername, call.peer);
+    });
 }
 
-async function createPeerConnection(peerId, remoteName, isInitiator) {
-    if (peerConnections[peerId]) return peerConnections[peerId];
-    const pc = new RTCPeerConnection(rtcConfig);
-    peerConnections[peerId] = pc;
-    iceCandidatesQueue[peerId] = [];
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    pc.onicecandidate = (e) => {
-        if (e.candidate && ws?.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'candidate', target: peerId, candidate: e.candidate }));
-        }
-    };
-    pc.ontrack = (e) => {
-        if (e.streams && e.streams[0]) addVideoStream(remoteName, e.streams[0], false, peerId);
-    };
-    pc.onnegotiationneeded = async () => {
-        if (isInitiator) {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            ws.send(JSON.stringify({ type: 'offer', target: peerId, offer: offer, username: myUsername }));
-        }
-    };
-    return pc;
-}
-
-async function handleOffer(peerId, remoteName, offer) {
-    const pc = await createPeerConnection(peerId, remoteName, false);
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    ws.send(JSON.stringify({ type: 'answer', target: peerId, answer: answer }));
-    processQueue(peerId);
-}
-
-async function handleCandidate(peerId, candidate) {
-    const pc = peerConnections[peerId];
-    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
-        try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { console.error(e); }
-    } else {
-        if (!iceCandidatesQueue[peerId]) iceCandidatesQueue[peerId] = [];
-        iceCandidatesQueue[peerId].push(candidate);
-    }
-}
-
-function processQueue(peerId) {
-    const pc = peerConnections[peerId];
-    const queue = iceCandidatesQueue[peerId];
-    if (pc && pc.remoteDescription && pc.remoteDescription.type && queue) {
-        while (queue.length > 0) {
-            pc.addIceCandidate(new RTCIceCandidate(queue.shift())).catch(e => console.error(e));
-        }
-    }
+function gestisciFlussoChiamata(call, remoteName, peerId) {
+    call.on('stream', (remoteStream) => {
+        addVideoStream(remoteName, remoteStream, false, peerId);
+        activeCalls[peerId] = call;
+    });
+    
+    call.on('close', () => {
+        rimuoviVideoUtente(peerId);
+    });
 }
 
 function recalculateLayout() {
@@ -217,20 +171,20 @@ function addVideoStream(label, stream, isLocal, peerId = null) {
     recalculateLayout();
 }
 
-function removeUser(peerId) {
-    if (peerConnections[peerId]) { peerConnections[peerId].close(); delete peerConnections[peerId]; }
-    if (iceCandidatesQueue[peerId]) delete iceCandidatesQueue[peerId];
+function rimuoviVideoUtente(peerId) {
+    if (activeCalls[peerId]) {
+        activeCalls[peerId].close();
+        delete activeCalls[peerId];
+    }
     const el = document.getElementById(`v-${peerId}`);
     if (el) el.remove();
     recalculateLayout();
 }
 
 btnLeave.addEventListener('click', () => {
-    if (ws) { ws.close(); ws = null; }
-    for (let pId in peerConnections) removeUser(pId);
+    if (peer) { peer.destroy(); peer = null; }
+    for (let pId in activeCalls) { rimuoviVideoUtente(pId); }
     videoGrid.innerHTML = '';
-    myIdDisplay.innerText = '-';
-    activeRoomText.innerText = '-';
     window.history.replaceState({}, '', window.location.pathname);
     roomOverlay.style.display = "flex";
 });
