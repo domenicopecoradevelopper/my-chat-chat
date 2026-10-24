@@ -99,10 +99,12 @@ function initWebSocket() {
 
         switch (data.type) {
             case 'room-peers':
-                // Se entriamo dopo, lanciamo la chiamata verso tutti i presenti con un piccolo delay protettivo
-                setTimeout(() => {
-                    data.peers.forEach(peer => makeCall(peer.id, peer.username));
-                }, 800);
+                // Se entriamo dopo, avviamo le chiamate verso chi è già presente
+                data.peers.forEach(peer => makeCall(peer.id, peer.username));
+                break;
+            case 'user-joined':
+                // Riceviamo la notifica dal server. Creiamo la predisposizione per accogliere l'offerta dell'altro utente
+                console.log(`Un altro utente si è unito: ${data.username}`);
                 break;
             case 'offer':
                 await handleOffer(data.sender, data.username, data.offer);
@@ -176,7 +178,7 @@ async function createPeerConnection(peerId, remoteName) {
     };
 
     pc.ontrack = (event) => {
-        addVideoStream(remoteName, event.streams[0], false, peerId);
+        addVideoStream(remoteName, event.streams, false, peerId);
     };
 
     return pc;
